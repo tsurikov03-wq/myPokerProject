@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iostream>
 
 LANBlackjackGame::LANBlackjackGame(const std::vector<Player*>& players, bool isServer)
     : Game(players), m_isServer(isServer), m_clientPlayerId(0) {
@@ -26,10 +27,12 @@ void LANBlackjackGame::run() {
     if (m_isServer) {
         net.setOnClientMessage([this](const void* data, int len) { onPacketReceived(data, len); });
         startNewRound();
+        std::cout << "[SERVER] Game started, waiting for clients..." << std::endl;
     } else {
         net.setOnClientMessage([this](const void* data, int len) { onPacketReceived(data, len); });
         m_gameOver = false;
         m_waitingForAction = false;
+        std::cout << "[CLIENT] Waiting for game state from server..." << std::endl;
     }
 }
 
@@ -69,6 +72,7 @@ void LANBlackjackGame::startNewRound() {
         dealerTurn();
     }
     sendFullStateToClient();
+    std::cout << "[SERVER] State sent after startNewRound" << std::endl;
 }
 
 void LANBlackjackGame::askBet(Player* p, int idx) {
@@ -136,7 +140,7 @@ void LANBlackjackGame::render() {
         return;
     }
 
-    // Серверная отрисовка
+    // Серверная отрисовка (локальная)
     std::string dealerScore = m_waitingForAction ? "?" : std::to_string(m_dealer->getHandValue());
     r.drawText("DEALER: " + dealerScore, winW/2 - 60, 20, {255,215,0,255});
     int dx = winW/2 - (int)m_dealer->getHand().size() * 40;
@@ -323,6 +327,7 @@ void LANBlackjackGame::sendAction(BlackjackAction action) {
     packet.playerId = m_clientPlayerId;
     packet.action = action;
     NetworkManager::getInstance().sendToServer(&packet, sizeof(packet));
+    std::cout << "[CLIENT] Sent action: " << (int)action << std::endl;
 }
 
 void LANBlackjackGame::onPacketReceived(const void* data, int len) {
@@ -333,6 +338,7 @@ void LANBlackjackGame::onPacketReceived(const void* data, int len) {
         m_gameOver = m_lastState.gameOver;
         if (!m_isServer) {
             m_waitingForAction = !m_gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
+            std::cout << "[CLIENT] Received GameState, gameOver=" << m_gameOver << ", myTurn=" << m_waitingForAction << std::endl;
         }
     } else if (type == PacketType::PlayerAction && m_isServer && len >= sizeof(PlayerActionPacket)) {
         PlayerActionPacket action;
@@ -393,4 +399,5 @@ void LANBlackjackGame::sendFullStateToClient() {
     }
     packet.gameOver = m_gameOver;
     NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
+    std::cout << "[SERVER] Sent GameStatePacket to client" << std::endl;
 }
