@@ -12,6 +12,7 @@ public:
     Card dealCard();
     void reset();
     int remainingCards() const;
+
 private:
     std::vector<Card> m_cards;
     std::mt19937 m_rng;

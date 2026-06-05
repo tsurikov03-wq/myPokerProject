@@ -9,10 +9,15 @@ enum class Rank { Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Qu
 class Card {
 public:
     Card(Suit suit, Rank rank);
+
     Suit getSuit() const;
     Rank getRank() const;
     int getValue() const;
+    int getPokerValue() const;
+    bool isRed() const;
     std::string toString() const;
+    std::string getTextureName() const;
+
 private:
     Suit m_suit;
     Rank m_rank;

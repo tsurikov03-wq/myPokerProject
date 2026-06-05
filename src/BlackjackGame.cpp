@@ -1,24 +1,64 @@
 #include "BlackjackGame.h"
 #include "Renderer.h"
-#include <iostream>
+#include <algorithm>
+#include <cmath>
 
-BlackjackGame::BlackjackGame(const std::vector<Player*>& players) : Game(players),
-    m_dealer(nullptr), m_currentPlayerIndex(0), m_waitingForAction(false) {
-    m_dealer = new BotPlayer("Dealer");
-    m_gameOver = false;
+BlackjackGame::BlackjackGame(const std::vector<Player*>& players)
+    : Game(players), m_dealer(nullptr), m_currentPlayerIndex(0), m_waitingForAction(false), m_botTimer(0) {
+    m_dealer = new BotPlayer("Dealer", 999999);
+    m_playerBets.resize(players.size(), 0);
+    m_playerDone.resize(players.size(), false);
 }
-BlackjackGame::~BlackjackGame() { delete m_dealer; }
+
+BlackjackGame::~BlackjackGame() {
+    delete m_dealer;
+}
+
+void BlackjackGame::askBet(Player* p, int idx) {
+    int maxBet = p->getMoney();
+    if (maxBet <= 0) {
+        m_playerBets[idx] = 0;
+        m_playerDone[idx] = true;
+        return;
+    }
+    int bet = std::min(50, maxBet);
+    if (bet < 1) bet = 1;
+    m_playerBets[idx] = bet;
+    p->placeBet(bet);
+}
 
 void BlackjackGame::run() {
     m_deck.reset();
     m_gameOver = false;
     m_waitingForAction = true;
     m_currentPlayerIndex = 0;
+    m_botTimer = 0;
+    m_playerBets.assign(m_players.size(), 0);
+    m_playerDone.assign(m_players.size(), false);
+
     for (auto p : m_players) p->clearHand();
     m_dealer->clearHand();
+
+    for (size_t i = 0; i < m_players.size(); ++i)
+        askBet(m_players[i], static_cast<int>(i));
+
     for (int i = 0; i < 2; ++i) {
-        for (auto p : m_players) p->addCard(m_deck.dealCard());
+        for (size_t j = 0; j < m_players.size(); ++j) {
+            if (m_playerBets[j] > 0 && !m_playerDone[j]) {
+                m_players[j]->addCard(m_deck.dealCard());
+            }
+        }
         m_dealer->addCard(m_deck.dealCard());
+    }
+
+    while (m_currentPlayerIndex < (int)m_players.size() &&
+           (m_playerBets[m_currentPlayerIndex] == 0 || m_playerDone[m_currentPlayerIndex])) {
+        m_currentPlayerIndex++;
+    }
+
+    if (m_currentPlayerIndex >= (int)m_players.size()) {
+        m_waitingForAction = false;
+        dealerTurn();
     }
 }
 
@@ -27,71 +67,129 @@ void BlackjackGame::render() {
     r.clear();
     r.drawTable();
 
-    r.drawText("Dealer: " + std::to_string(m_dealer->getHandValue()), 300, 50, {255,255,255,255});
-    int dx = 200;
-    for (const auto& card : m_dealer->getHand()) {
-        r.drawCard(card, dx, 100, 60, 90);
-        dx += 70;
+    int winW, winH;
+    r.getWindowSize(winW, winH);
+
+    std::string dealerScore = m_waitingForAction ? "?" : std::to_string(m_dealer->getHandValue());
+    r.drawText("DEALER: " + dealerScore, winW / 2 - 60, 20, {255, 215, 0, 255});
+
+    int dx = winW / 2 - (int)m_dealer->getHand().size() * 40;
+    for (size_t i = 0; i < m_dealer->getHand().size(); ++i) {
+        bool hidden = (i == 1 && m_waitingForAction);
+        r.drawCard(m_dealer->getHand()[i], dx, 60, 70, 105, hidden);
+        dx += 80;
     }
 
-    int yStart = 300;
-    int stepY = 120;
-    int maxPlayers = (int)m_players.size();
-    if (maxPlayers > 6) stepY = 90;
+    int count = (int)m_players.size();
+    int radiusX = winW / 2 - 120;
+    int radiusY = winH / 3;
+    int centerX = winW / 2;
+    int centerY = winH - 220;
 
-    for (int i = 0; i < maxPlayers; ++i) {
-        if (i == m_currentPlayerIndex && m_waitingForAction) {
-            r.drawText("-->", 50, yStart + i*stepY, {255,255,0,255});
+    for (int i = 0; i < count; ++i) {
+        if (m_playerBets[i] == 0 && m_playerDone[i]) continue;
+
+        double angle = M_PI;
+        if (count > 1) angle = M_PI - (M_PI * i / (count - 1));
+        else angle = M_PI / 2;
+
+        int x = centerX + (int)(radiusX * cos(angle)) - 35;
+        int y = centerY - (int)(radiusY * sin(angle));
+
+        SDL_Color nameColor = (i == m_currentPlayerIndex && m_waitingForAction) ?
+                              SDL_Color{0, 255, 0, 255} : SDL_Color{255, 255, 255, 255};
+
+        std::string status = "";
+        if (m_players[i]->isBust()) status = " (Bust!)";
+        else if (m_playerDone[i]) status = " (Done)";
+
+        r.drawText(m_players[i]->getName() + status, x - 20, y - 30, nameColor);
+        r.drawText("Money: $" + std::to_string(m_players[i]->getMoney()), x - 20, y - 10, {200, 200, 200, 255});
+        r.drawText("Bet: $" + std::to_string(m_playerBets[i]), x - 20, y + 110, {255, 215, 0, 255});
+        r.drawText("Score: " + std::to_string(m_players[i]->getHandValue()), x - 20, y + 130, {255, 255, 255, 255});
+
+        for (size_t cardIdx = 0; cardIdx < m_players[i]->getHand().size(); ++cardIdx) {
+            r.drawCard(m_players[i]->getHand()[cardIdx], x + cardIdx * 25, y, 70, 105, false);
         }
-        r.drawText(m_players[i]->getName() + ": " + std::to_string(m_players[i]->getHandValue()),
-                   100, yStart + i*stepY, {255,255,255,255});
-        int cx = 200;
-        for (const auto& card : m_players[i]->getHand()) {
-            r.drawCard(card, cx, yStart + i*stepY, 60, 90);
-            cx += 70;
-        }
     }
 
-    if (m_waitingForAction && m_currentPlayerIndex < maxPlayers) {
-        r.drawButton("Hit", 100, 550, 100, 50, false);
-        r.drawButton("Stand", 250, 550, 100, 50, false);
-        r.drawButton("Double", 400, 550, 100, 50, false);
+    if (m_waitingForAction && m_currentPlayerIndex < count) {
+        Player* current = m_players[m_currentPlayerIndex];
+
+        if (current->isBot()) {
+            uint64_t currentTicks = SDL_GetTicks();
+            if (m_botTimer == 0) {
+                m_botTimer = currentTicks;
+            }
+
+            if (currentTicks - m_botTimer >= 600) {
+                std::string action = current->getAction({"hit", "stand"});
+                if (action == "hit") {
+                    current->addCard(m_deck.dealCard());
+                    if (current->isBust()) {
+                        m_playerDone[m_currentPlayerIndex] = true;
+                        nextPlayer();
+                    }
+                } else {
+                    m_playerDone[m_currentPlayerIndex] = true;
+                    nextPlayer();
+                }
+                m_botTimer = 0;
+            }
+        } else {
+            int btnY = winH - 70;
+            r.drawButton("Hit", winW / 2 - 220, btnY, 100, 50);
+            r.drawButton("Stand", winW / 2 - 110, btnY, 100, 50);
+
+            if (current->getHand().size() == 2 && current->canAfford(m_playerBets[m_currentPlayerIndex])) {
+                r.drawButton("Double", winW / 2, btnY, 100, 50);
+            }
+        }
+    } else if (m_gameOver) {
+        r.drawButton("Main Menu", winW / 2 - 80, winH / 2 + 50, 160, 40);
     }
+
     r.present();
 }
 
 bool BlackjackGame::handleEvent(const SDL_Event& event) {
-    if (m_gameOver) return false;
-    if (!m_waitingForAction) return false;
-    if (m_currentPlayerIndex >= (int)m_players.size()) {
-        dealerTurn();
+    if (m_gameOver) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            int winW, winH;
+            Renderer::getInstance().getWindowSize(winW, winH);
+            if (Renderer::getInstance().isButtonClicked(winW / 2 - 80, winH / 2 + 50, 160, 40)) {
+                return true;
+            }
+        }
         return false;
     }
-    Player* current = m_players[m_currentPlayerIndex];
-    if (current->isBot()) {
-        std::string action = current->getAction({"hit", "stand"});
-        if (action == "hit") {
-            current->addCard(m_deck.dealCard());
-            if (current->getHandValue() > 21) nextPlayer();
-        } else if (action == "stand") {
-            nextPlayer();
-        }
-    } else {
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+
+    if (m_waitingForAction && m_currentPlayerIndex < (int)m_players.size()) {
+        Player* current = m_players[m_currentPlayerIndex];
+
+        if (!current->isBot() && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            int winW, winH;
+            Renderer::getInstance().getWindowSize(winW, winH);
             auto& r = Renderer::getInstance();
-            if (r.isButtonClicked("Hit", 100, 550, 100, 50)) {
+            int btnY = winH - 70;
+
+            if (r.isButtonClicked(winW / 2 - 220, btnY, 100, 50)) {
                 current->addCard(m_deck.dealCard());
-                if (current->getHandValue() > 21) nextPlayer();
-            } else if (r.isButtonClicked("Stand", 250, 550, 100, 50)) {
-                nextPlayer();
-            } else if (r.isButtonClicked("Double", 400, 550, 100, 50)) {
-                int bet = std::min(current->getMoney() / 2, 100);
-                if (bet < 10) bet = 10;
-                if (current->getMoney() >= bet) {
-                    current->placeBet(bet);
-                    current->addCard(m_deck.dealCard());
+                if (current->isBust()) {
+                    m_playerDone[m_currentPlayerIndex] = true;
                     nextPlayer();
                 }
+            } else if (r.isButtonClicked(winW / 2 - 110, btnY, 100, 50)) {
+                m_playerDone[m_currentPlayerIndex] = true;
+                nextPlayer();
+            } else if (current->getHand().size() == 2 && current->canAfford(m_playerBets[m_currentPlayerIndex]) &&
+                       r.isButtonClicked(winW / 2, btnY, 100, 50)) {
+                int doubleBet = m_playerBets[m_currentPlayerIndex];
+                current->placeBet(doubleBet);
+                m_playerBets[m_currentPlayerIndex] += doubleBet;
+                current->addCard(m_deck.dealCard());
+                m_playerDone[m_currentPlayerIndex] = true;
+                nextPlayer();
             }
         }
     }
@@ -100,6 +198,13 @@ bool BlackjackGame::handleEvent(const SDL_Event& event) {
 
 void BlackjackGame::nextPlayer() {
     m_currentPlayerIndex++;
+    m_botTimer = 0;
+
+    while (m_currentPlayerIndex < (int)m_players.size() &&
+           (m_playerBets[m_currentPlayerIndex] == 0 || m_playerDone[m_currentPlayerIndex])) {
+        m_currentPlayerIndex++;
+    }
+
     if (m_currentPlayerIndex >= (int)m_players.size()) {
         m_waitingForAction = false;
         dealerTurn();
@@ -116,14 +221,22 @@ void BlackjackGame::dealerTurn() {
 
 void BlackjackGame::resolveBets() {
     int dealerVal = m_dealer->getHandValue();
-    for (auto p : m_players) {
+    bool dealerBust = dealerVal > 21;
+
+    for (size_t i = 0; i < m_players.size(); ++i) {
+        if (m_playerBets[i] == 0) continue;
+
+        Player* p = m_players[i];
         int pVal = p->getHandValue();
+
         if (pVal > 21) {
-            // проигрыш
-        } else if (dealerVal > 21 || pVal > dealerVal) {
-            p->winMoney(10);
+            continue;
+        }
+
+        if (dealerBust || pVal > dealerVal) {
+            p->winMoney(m_playerBets[i] * 2);
         } else if (pVal == dealerVal) {
-            p->winMoney(0);
+            p->winMoney(m_playerBets[i]);
         }
     }
 }

@@ -7,30 +7,36 @@
 class PokerGame : public Game {
 public:
     PokerGame(const std::vector<Player*>& players);
+    ~PokerGame();
+
     void run() override;
     void render() override;
     bool handleEvent(const SDL_Event& event) override;
 
 private:
-    enum class State { Preflop, Flop, Turn, River, Showdown };
-    State m_state;
+    enum class Stage { Preflop, Flop, Turn, River, Showdown };
+    Stage m_stage;
     std::vector<Card> m_communityCards;
+    int m_smallBlind;
+    int m_bigBlind;
     int m_currentBet;
     int m_pot;
-    int m_currentPlayerIndex;
-    std::vector<int> m_playerBets; // -1 = fold
+    int m_dealerButton;
+    int m_currentPlayerIdx;
+    int m_lastRaiserIdx;
+    int m_playersInHand;
     bool m_waitingForAction;
 
+    void advanceStage();
+    void startNewRound();
+    void collectBlinds();
+    void evaluateAndPayWinners();
     void nextPlayer();
-    void endRound();
-    void evaluateWinner();
-    void dealHoleCards();
-    void dealCommunity(int count);
-    void resetRoundBets();
-    void processAction(Player* player, const std::string& action);
-    bool allPlayersActed() const;
-    int getMinBet() const;
-    int getPlayerBetAmount(Player* p);
+    bool isRoundComplete();
+    void resetPlayerActions();
+    int getPlayerBet(Player* p);
+    int getHandRank(const std::vector<Card>& cards);
+    std::vector<Card> getBestFive(const Player* p);
 };
 
 #endif
