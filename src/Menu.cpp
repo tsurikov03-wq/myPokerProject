@@ -1,5 +1,6 @@
 #include "Menu.h"
 #include "Renderer.h"
+#include <cstring>
 
 bool Menu::isPointInRect(int x, int y, int rx, int ry, int rw, int rh) {
     return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
@@ -53,7 +54,6 @@ Menu::Resolution Menu::showResolutionMenu() {
 
 Menu::GameChoice Menu::showMainMenu() {
     bool waiting = true;
-    GameChoice choice = GameChoice::None;
     auto& r = Renderer::getInstance();
     int w, h;
     r.getWindowSize(w, h);
@@ -63,7 +63,9 @@ Menu::GameChoice Menu::showMainMenu() {
         r.drawText("CASINO SUITE", w / 2 - 100, h / 2 - 200, { 255, 215, 0, 255 });
         r.drawButton("Blackjack", w / 2 - 100, h / 2 - 80, 200, 50);
         r.drawButton("Texas Hold'em Poker", w / 2 - 100, h / 2, 200, 50);
-        r.drawButton("Quit", w / 2 - 100, h / 2 + 80, 200, 50);
+        r.drawButton("LAN Blackjack (Host)", w / 2 - 100, h / 2 + 80, 200, 50);
+        r.drawButton("LAN Blackjack (Join)", w / 2 - 100, h / 2 + 140, 200, 50);
+        r.drawButton("Quit", w / 2 - 100, h / 2 + 200, 200, 50);
         r.present();
 
         SDL_Event event;
@@ -73,12 +75,50 @@ Menu::GameChoice Menu::showMainMenu() {
                 int xm = (int)event.button.x, ym = (int)event.button.y;
                 if (isPointInRect(xm, ym, w / 2 - 100, h / 2 - 80, 200, 50)) return GameChoice::Blackjack;
                 if (isPointInRect(xm, ym, w / 2 - 100, h / 2, 200, 50)) return GameChoice::Poker;
-                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 80, 200, 50)) return GameChoice::Quit;
+                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 80, 200, 50)) return GameChoice::LANBlackjackHost;
+                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 140, 200, 50)) return GameChoice::LANBlackjackJoin;
+                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 200, 200, 50)) return GameChoice::Quit;
             }
         }
         SDL_Delay(16);
     }
-    return choice;
+    return GameChoice::None;
+}
+
+std::string Menu::inputText(const std::string& title, const std::string& defaultValue, int x, int y) {
+    auto& r = Renderer::getInstance();
+    SDL_Window* window = r.getSDLWindow();
+    SDL_StartTextInput(window);
+    std::string input = defaultValue;
+    bool waiting = true;
+
+    while (waiting) {
+        r.clear();
+        r.drawText(title, x, y, {255,255,255,255});
+        r.drawText(input + "_", x, y + 30, {200,200,200,255});
+        r.present();
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                waiting = false;
+                break;
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.key == SDLK_RETURN) {
+                    waiting = false;
+                } else if (event.key.key == SDLK_BACKSPACE && !input.empty()) {
+                    input.pop_back();
+                }
+            }
+            if (event.type == SDL_EVENT_TEXT_INPUT) {
+                input += event.text.text;
+            }
+        }
+        SDL_Delay(16);
+    }
+    SDL_StopTextInput(window);
+    return input;
 }
 
 Menu::PlayerSetup Menu::showPlayerSetupMenu() {
@@ -108,7 +148,6 @@ Menu::PlayerSetup Menu::showPlayerSetupMenu() {
                 if (isPointInRect(xm, ym, fieldX + 260, humansY, 40, 50)) { if (setup.humans + setup.bots < 7) setup.humans++; }
                 if (isPointInRect(xm, ym, fieldX + 210, botsY, 40, 50)) { if (setup.bots > 0) setup.bots--; }
                 if (isPointInRect(xm, ym, fieldX + 260, botsY, 40, 50)) { if (setup.humans + setup.bots < 7) setup.bots++; }
-
                 if (isPointInRect(xm, ym, confirmX, confirmY, btnW, btnH)) {
                     if (setup.humans + setup.bots > 0) waiting = false;
                 }

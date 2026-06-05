@@ -11,7 +11,7 @@
 class Renderer {
 public:
     static Renderer& getInstance();
-
+    SDL_Window* getSDLWindow() const { return m_window; }
     bool init(const char* title, int width, int height);
     void shutdown();
     void clear();

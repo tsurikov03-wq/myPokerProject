@@ -7,7 +7,7 @@
 
 class Menu {
 public:
-    enum class GameChoice { Blackjack, Poker, Quit, None };
+    enum class GameChoice { Blackjack, Poker, LANBlackjackHost, LANBlackjackJoin, Quit, None };
 
     struct Resolution { int width, height; };
     static Resolution showResolutionMenu();
@@ -15,6 +15,8 @@ public:
 
     struct PlayerSetup { int humans; int bots; };
     static PlayerSetup showPlayerSetupMenu();
+
+    static std::string inputText(const std::string& title, const std::string& defaultValue, int x, int y);
 
 private:
     static bool isPointInRect(int x, int y, int rx, int ry, int rw, int rh);
