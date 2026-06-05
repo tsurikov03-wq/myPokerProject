@@ -3,6 +3,7 @@
 
 #include "Game.h"
 #include <vector>
+#include <string>
 
 class PokerGame : public Game {
 public:
@@ -11,7 +12,7 @@ public:
 
     void run() override;
     void render() override;
-    bool handleEvent(const SDL_Event& event) override;
+    int handleEvent(const SDL_Event& event) override;
 
 private:
     enum class Stage { Preflop, Flop, Turn, River, Showdown };
@@ -26,6 +27,7 @@ private:
     int m_lastRaiserIdx;
     int m_playersInHand;
     bool m_waitingForAction;
+    std::string m_winnerText;
 
     void advanceStage();
     void startNewRound();
@@ -35,8 +37,6 @@ private:
     bool isRoundComplete();
     void resetPlayerActions();
     int getPlayerBet(Player* p);
-    int getHandRank(const std::vector<Card>& cards);
-    std::vector<Card> getBestFive(const Player* p);
 };
 
 #endif

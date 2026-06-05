@@ -13,7 +13,7 @@ public:
 
     virtual void run() = 0;
     virtual void render() = 0;
-    virtual bool handleEvent(const SDL_Event& event) = 0;
+    virtual int handleEvent(const SDL_Event& event) = 0;
     virtual bool isGameOver() const { return m_gameOver; }
 
 protected:

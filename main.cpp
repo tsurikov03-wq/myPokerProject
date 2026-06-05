@@ -26,49 +26,59 @@ int main(int argc, char* argv[]) {
         Menu::PlayerSetup playersSetup = Menu::showPlayerSetupMenu();
         if (playersSetup.humans == 0 && playersSetup.bots == 0) continue;
 
+
         std::vector<Player*> players;
         for (int i = 0; i < playersSetup.humans; ++i)
             players.push_back(new HumanPlayer("Player " + std::to_string(i + 1), 1000));
         for (int i = 0; i < playersSetup.bots; ++i)
             players.push_back(new BotPlayer("Bot " + std::to_string(i + 1), 1000));
 
-        Game* game = nullptr;
-        if (choice == Menu::GameChoice::Blackjack)
-            game = new BlackjackGame(players);
-        else if (choice == Menu::GameChoice::Poker)
-            game = new PokerGame(players);
+        bool nextGame = false;
+        do {
+            Game* game = nullptr;
+            if (choice == Menu::GameChoice::Blackjack)
+                game = new BlackjackGame(players);
+            else if (choice == Menu::GameChoice::Poker)
+                game = new PokerGame(players);
 
-        if (game) {
-            game->run();
-            bool gameRunning = true;
-            bool waitingForExit = false;
+            if (game) {
+                game->run();
+                bool gameRunning = true;
+                int exitCode = 0;
 
-            while (gameRunning) {
-                SDL_Event event;
-                while (SDL_PollEvent(&event)) {
-                    if (event.type == SDL_EVENT_QUIT) {
-                        gameRunning = false;
-                        quit = true;
+                while (gameRunning) {
+                    SDL_Event event;
+                    while (SDL_PollEvent(&event)) {
+                        if (event.type == SDL_EVENT_QUIT) {
+                            gameRunning = false;
+                            quit = true;
+                            exitCode = 1;
+                        }
+                        int code = game->handleEvent(event);
+                        if (code > 0 && game->isGameOver()) {
+                            exitCode = code;
+                            gameRunning = false;
+                        }
                     }
-                    bool shouldExit = game->handleEvent(event);
-                    if (shouldExit && game->isGameOver()) {
-                        waitingForExit = true;
-                        gameRunning = false;
-                    }
+                    game->render();
+                    SDL_Delay(16);
                 }
-                game->render();
-                SDL_Delay(16);
+                delete game;
 
-                if (game->isGameOver() && waitingForExit) {
-                    gameRunning = false;
+                if (exitCode == 1 || quit) {
+                    nextGame = false;
+                    break;
+                } else if (exitCode == 2) {
+                    nextGame = true;
+                   
+                    continue;
                 }
             }
-            delete game;
-        }
+            nextGame = false;
+        } while (nextGame);
 
-        for (Player* p : players) {
-            delete p;
-        }
+
+        for (Player* p : players) delete p;
         players.clear();
     }
 
