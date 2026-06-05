@@ -32,6 +32,7 @@ void LANBlackjackGame::run() {
         net.setOnClientMessage([this](const void* data, int len) { onPacketReceived(data, len); });
         m_gameOver = false;
         m_waitingForAction = false;
+        m_clientPlayerId = 1;  // клиент управляет вторым игроком (индекс 1)
         std::cout << "[CLIENT] Waiting for game state from server..." << std::endl;
     }
 }
@@ -327,7 +328,7 @@ void LANBlackjackGame::sendAction(BlackjackAction action) {
     packet.playerId = m_clientPlayerId;
     packet.action = action;
     NetworkManager::getInstance().sendToServer(&packet, sizeof(packet));
-    std::cout << "[CLIENT] Sent action: " << (int)action << std::endl;
+    std::cout << "[CLIENT] Sent action: " << (int)action << " as player " << m_clientPlayerId << std::endl;
 }
 
 void LANBlackjackGame::onPacketReceived(const void* data, int len) {
@@ -338,7 +339,7 @@ void LANBlackjackGame::onPacketReceived(const void* data, int len) {
         m_gameOver = m_lastState.gameOver;
         if (!m_isServer) {
             m_waitingForAction = !m_gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
-            std::cout << "[CLIENT] Received GameState, gameOver=" << m_gameOver << ", myTurn=" << m_waitingForAction << std::endl;
+            std::cout << "[CLIENT] Received GameState, gameOver=" << m_gameOver << ", currentPlayerId=" << m_lastState.currentPlayerId << ", myId=" << m_clientPlayerId << ", myTurn=" << m_waitingForAction << std::endl;
         }
     } else if (type == PacketType::PlayerAction && m_isServer && len >= sizeof(PlayerActionPacket)) {
         PlayerActionPacket action;
