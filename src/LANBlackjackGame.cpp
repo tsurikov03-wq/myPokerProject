@@ -15,7 +15,6 @@ LANBlackjackGame::LANBlackjackGame(const std::vector<Player*>& players, bool isS
         m_playerResult.resize(m_players.size(), "");
         m_playerResultColor.resize(m_players.size(), SDL_Color{200,200,200,255});
     } else {
-        // Клиентские массивы для отображения результатов
         m_playerResult.resize(6, "");
         m_playerResultColor.resize(6, SDL_Color{200,200,200,255});
     }
@@ -36,7 +35,7 @@ void LANBlackjackGame::run() {
         net.setOnClientMessage([this](const void* data, int len) { onPacketReceived(data, len); });
         m_gameOver = false;
         m_waitingForAction = false;
-        m_clientPlayerId = 1; // Клиент управляет вторым игроком (индекс 1)
+        m_clientPlayerId = 1;
         std::cout << "[CLIENT] Waiting for game state from server..." << std::endl;
     }
 }
@@ -127,7 +126,6 @@ void LANBlackjackGame::render() {
             r.drawText("Money: $" + std::to_string(m_lastState.players[i].money), x-20, y-30, {200,200,200,255});
             r.drawText("Bet: $" + std::to_string(m_lastState.players[i].bet), x-20, y+120, {255,215,0,255});
             r.drawText("Score: " + std::to_string(m_lastState.players[i].handValue), x-20, y+140, {255,255,255,255});
-            // Вывод результата для клиента
             if (strlen(m_lastState.players[i].result) > 0) {
                 SDL_Color resColor = {m_lastState.players[i].resultColorR, m_lastState.players[i].resultColorG, m_lastState.players[i].resultColorB, 255};
                 r.drawText(m_lastState.players[i].result, x-20, y+160, resColor);
@@ -185,33 +183,18 @@ void LANBlackjackGame::render() {
             r.drawCard(m_players[i]->getHand()[cardIdx], x + cardIdx*25, y, 70, 105, false);
         }
     }
-    if (m_waitingForAction && m_currentPlayerIndex < count) {
+    // На сервере кнопки рисуем только для локального игрока (индекс 0)
+    if (m_waitingForAction && m_currentPlayerIndex == 0 && m_currentPlayerIndex < count) {
         Player* current = m_players[m_currentPlayerIndex];
-        if (current->isBot()) {
-            uint64_t currentTicks = SDL_GetTicks();
-            if (m_botTimer == 0) m_botTimer = currentTicks;
-            if (currentTicks - m_botTimer >= 600) {
-                std::string action = current->getAction({"hit","stand"});
-                if (action == "hit") {
-                    current->addCard(m_deck.dealCard());
-                    if (current->isBust()) {
-                        m_playerDone[m_currentPlayerIndex] = true;
-                        nextPlayer();
-                    }
-                } else {
-                    m_playerDone[m_currentPlayerIndex] = true;
-                    nextPlayer();
-                }
-                m_botTimer = 0;
-                sendFullStateToClient();
-            }
-        } else {
+        if (!current->isBot()) {
             int btnY = winH - 70;
             r.drawButton("Hit", winW/2 - 220, btnY, 100, 50);
             r.drawButton("Stand", winW/2 - 110, btnY, 100, 50);
             if (current->getHand().size() == 2 && current->canAfford(m_playerBets[m_currentPlayerIndex])) {
                 r.drawButton("Double", winW/2, btnY, 100, 50);
             }
+        } else if (current->isBot()) {
+            // бот обрабатывается автоматически, кнопки не нужны
         }
     } else if (m_gameOver) {
         r.drawButton("Main Menu", winW/2 - 160, winH/2 + 120, 140, 40);
@@ -232,7 +215,7 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
         return 0;
     }
     if (m_isServer) {
-        // На сервере управляем только игроком с индексом 0 (Host)
+        // На сервере обрабатываем действия только для локального игрока (индекс 0)
         if (m_waitingForAction && m_currentPlayerIndex == 0 && m_currentPlayerIndex < (int)m_players.size()) {
             Player* current = m_players[m_currentPlayerIndex];
             if (!current->isBot() && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -264,8 +247,8 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
             }
         }
     } else {
-        // На клиенте управляем только игроком с индексом 1 (Client)
-        if (m_waitingForAction && m_currentPlayerIndex == 1 && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        // На клиенте используем m_lastState.currentPlayerId для проверки, чей ход
+        if (m_waitingForAction && m_lastState.currentPlayerId == m_clientPlayerId && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
             auto& r = Renderer::getInstance();
@@ -293,6 +276,11 @@ void LANBlackjackGame::nextPlayer() {
         m_waitingForAction = false;
         dealerTurn();
         sendFullStateToClient();
+    } else {
+        // Если следующий игрок – бот, обработаем его автоматически
+        if (m_players[m_currentPlayerIndex]->isBot()) {
+            // Бот будет обработан в render() через таймер
+        }
     }
 }
 
@@ -350,16 +338,13 @@ void LANBlackjackGame::onPacketReceived(const void* data, int len) {
         m_lastState = state;
         m_gameOver = state.gameOver;
         if (!m_isServer) {
-            // Обновляем локальные результаты для отображения
             for (uint8_t i = 0; i < state.playerCount; ++i) {
                 m_playerResult[i] = std::string(state.players[i].result);
                 m_playerResultColor[i] = {state.players[i].resultColorR, state.players[i].resultColorG, state.players[i].resultColorB, 255};
             }
-            // Обновляем флаг ожидания действия для нашего игрока
             m_waitingForAction = !m_gameOver && (state.currentPlayerId == m_clientPlayerId);
             std::cout << "[CLIENT] Received GameState, gameOver=" << m_gameOver << ", myTurn=" << m_waitingForAction << std::endl;
         } else {
-            // Сервер: обновить результаты (хотя они уже есть)
             for (uint8_t i = 0; i < state.playerCount; ++i) {
                 if (i < m_players.size()) {
                     m_playerResult[i] = std::string(state.players[i].result);
@@ -370,7 +355,7 @@ void LANBlackjackGame::onPacketReceived(const void* data, int len) {
     } else if (type == PacketType::PlayerAction && m_isServer && len >= sizeof(PlayerActionPacket)) {
         PlayerActionPacket action;
         memcpy(&action, data, sizeof(PlayerActionPacket));
-        // На сервере обрабатываем действия только от клиентского игрока (индекс 1)
+        // Обрабатываем действия только от клиента (индекс 1)
         if (m_waitingForAction && action.playerId == 1 && m_currentPlayerIndex == 1) {
             Player* current = m_players[m_currentPlayerIndex];
             if (action.action == BlackjackAction::Hit) {
@@ -424,7 +409,6 @@ void LANBlackjackGame::sendFullStateToClient() {
         packet.players[i].bust = m_players[i]->isBust();
         packet.players[i].done = m_playerDone[i];
         packet.players[i].isBot = m_players[i]->isBot();
-        // Копируем результат
         strncpy(packet.players[i].result, m_playerResult[i].c_str(), 19);
         packet.players[i].result[19] = '\0';
         packet.players[i].resultColorR = m_playerResultColor[i].r;
