@@ -133,6 +133,8 @@ void LANBlackjackGame::render() {
             int btnY = winH - 70;
             r.drawButton("Hit", winW/2 - 220, btnY, 100, 50);
             r.drawButton("Stand", winW/2 - 110, btnY, 100, 50);
+            // Дополнительный вывод для отладки
+            std::cout << "[CLIENT] Drawing action buttons, my turn = " << m_waitingForAction << std::endl;
         } else if (m_gameOver) {
             r.drawButton("Main Menu", winW/2 - 160, winH/2 + 120, 140, 40);
             r.drawButton("Next Game", winW/2 + 20, winH/2 + 120, 140, 40);
@@ -284,6 +286,7 @@ void LANBlackjackGame::nextPlayer() {
         dealerTurn();
         sendFullStateToClient();
     }
+    std::cout << "[SERVER] Next player index = " << m_currentPlayerIndex << std::endl;
 }
 
 void LANBlackjackGame::dealerTurn() {
@@ -328,7 +331,7 @@ void LANBlackjackGame::sendAction(BlackjackAction action) {
     packet.playerId = m_clientPlayerId;
     packet.action = action;
     NetworkManager::getInstance().sendToServer(&packet, sizeof(packet));
-    std::cout << "[CLIENT] Sent action: " << (int)action << " as player " << m_clientPlayerId << std::endl;
+    std::cout << "[CLIENT] Sent action: " << (int)action << " for player " << m_clientPlayerId << std::endl;
 }
 
 void LANBlackjackGame::onPacketReceived(const void* data, int len) {
@@ -339,7 +342,8 @@ void LANBlackjackGame::onPacketReceived(const void* data, int len) {
         m_gameOver = m_lastState.gameOver;
         if (!m_isServer) {
             m_waitingForAction = !m_gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
-            std::cout << "[CLIENT] Received GameState, gameOver=" << m_gameOver << ", currentPlayerId=" << m_lastState.currentPlayerId << ", myId=" << m_clientPlayerId << ", myTurn=" << m_waitingForAction << std::endl;
+            std::cout << "[CLIENT] Received GameState, gameOver=" << m_gameOver << ", currentPlayerId=" << m_lastState.currentPlayerId
+                      << ", myId=" << m_clientPlayerId << ", myTurn=" << m_waitingForAction << std::endl;
         }
     } else if (type == PacketType::PlayerAction && m_isServer && len >= sizeof(PlayerActionPacket)) {
         PlayerActionPacket action;
@@ -400,5 +404,5 @@ void LANBlackjackGame::sendFullStateToClient() {
     }
     packet.gameOver = m_gameOver;
     NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
-    std::cout << "[SERVER] Sent GameStatePacket to client" << std::endl;
+    std::cout << "[SERVER] Sent GameStatePacket to client (currentPlayer=" << m_currentPlayerIndex << ")" << std::endl;
 }

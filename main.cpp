@@ -45,10 +45,8 @@ int main(int argc, char* argv[]) {
                 disc.startBroadcasting(port, "BlackjackServer");
                 disc.startDiscovery(12346);
                 std::vector<Player*> players;
-                // Хост (игрок 0) – управляется локально
                 players.push_back(new HumanPlayer("Host", 1000));
-                // Клиент (игрок 1) – будет управляться через сеть
-                players.push_back(new HumanPlayer("Client", 1000));
+                players.push_back(new HumanPlayer("Client", 1000)); // второй игрок для клиента
                 LANBlackjackGame game(players, true);
                 game.run();
                 bool gameRunning = true;
@@ -111,7 +109,7 @@ int main(int argc, char* argv[]) {
                     disc.quit();
                     continue;
                 }
-                std::vector<Player*> players; // пусто
+                std::vector<Player*> players; // пусто, клиент не создаёт игроков
                 LANBlackjackGame game(players, false);
                 game.run();
                 bool gameRunning = true;
