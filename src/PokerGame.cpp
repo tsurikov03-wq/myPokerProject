@@ -110,7 +110,6 @@ void PokerGame::advanceStage() {
         }
     }
     if (activeCount == 1 && m_stage != Stage::Showdown) {
-
         lastPlayer->winMoney(m_pot);
         m_pot = 0;
         m_gameOver = true;
@@ -140,16 +139,22 @@ void PokerGame::advanceStage() {
             return;
         default: break;
     }
+
+
     m_currentBet = 0;
     m_lastRaiserIdx = -1;
-    for (auto p : m_players) {
-        if (!p->m_hasFolded && !p->m_isAllIn) p->m_hasActed = false;
 
+    for (auto p : m_players) {
+        if (!p->m_hasFolded && !p->m_isAllIn) {
+            p->m_hasActed = false;
+        }
         p->m_currentBet = 0;
     }
+
     m_currentPlayerIdx = (m_dealerButton + 1) % m_players.size();
-    while (m_players[m_currentPlayerIdx]->m_hasFolded)
+    while (m_players[m_currentPlayerIdx]->m_hasFolded) {
         m_currentPlayerIdx = (m_currentPlayerIdx + 1) % m_players.size();
+    }
     m_waitingForAction = true;
 }
 
@@ -165,7 +170,6 @@ void PokerGame::nextPlayer() {
 }
 
 bool PokerGame::isRoundComplete() {
-
     int active = 0;
     int acted = 0;
     for (auto p : m_players) {
@@ -174,6 +178,9 @@ bool PokerGame::isRoundComplete() {
             if (p->m_hasActed || p->m_isAllIn) acted++;
         }
     }
+
+    if (active == 0) return true;
+
 
     int targetBet = -1;
     bool allBetsEqual = true;
@@ -184,8 +191,7 @@ bool PokerGame::isRoundComplete() {
         }
     }
 
-    bool complete = (acted >= active && allBetsEqual) || (m_lastRaiserIdx == -1 && allBetsEqual);
-    return complete && active > 0;
+    return (acted == active) && allBetsEqual;
 }
 
 void PokerGame::evaluateAndPayWinners() {
@@ -244,6 +250,7 @@ void PokerGame::render() {
     int winW, winH;
     r.getWindowSize(winW, winH);
 
+
     std::string stageText;
     switch (m_stage) {
         case Stage::Preflop: stageText = "PRE-FLOP"; break;
@@ -252,9 +259,9 @@ void PokerGame::render() {
         case Stage::River: stageText = "RIVER"; break;
         case Stage::Showdown: stageText = "SHOWDOWN"; break;
     }
-    r.drawText(stageText, winW/2 - 40, 10, {255, 200, 100, 255});
+    r.drawText(stageText, winW/2 - 40, 50, {255, 200, 100, 255});
 
-    r.drawText("POT: $" + std::to_string(m_pot), winW/2 - 50, 30, {255,215,0,255});
+    r.drawText("POT: $" + std::to_string(m_pot), winW/2 - 50, 75, {255,215,0,255});
 
     int ccX = winW/2 - (int)m_communityCards.size() * 40;
     for (size_t i = 0; i < m_communityCards.size(); ++i) {
@@ -305,7 +312,6 @@ void PokerGame::render() {
                 current->m_hasActed = true;
                 nextPlayer();
             } else {
-
                 current->m_hasFolded = true;
                 nextPlayer();
             }
@@ -330,11 +336,12 @@ void PokerGame::render() {
             }
         }
     } else if (m_gameOver) {
+
         if (!m_winnerText.empty()) {
-            r.drawText(m_winnerText, winW/2 - 150, winH/2 + 40, {100, 255, 100, 255});
+            r.drawText(m_winnerText, winW/2 - 150, winH/2 + 80, {100, 255, 100, 255});
         }
-        r.drawButton("Main Menu", winW/2 - 160, winH/2 + 100, 140, 40);
-        r.drawButton("Next Game", winW/2 + 20, winH/2 + 100, 140, 40);
+        r.drawButton("Main Menu", winW/2 - 160, winH/2 + 140, 140, 40);
+        r.drawButton("Next Game", winW/2 + 20, winH/2 + 140, 140, 40);
     }
 
     r.present();
@@ -346,8 +353,8 @@ int PokerGame::handleEvent(const SDL_Event& event) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
             auto& r = Renderer::getInstance();
-            if (r.isButtonClicked(winW/2 - 160, winH/2 + 100, 140, 40)) return 1;
-            if (r.isButtonClicked(winW/2 + 20, winH/2 + 100, 140, 40)) return 2;
+            if (r.isButtonClicked(winW/2 - 160, winH/2 + 140, 140, 40)) return 1;
+            if (r.isButtonClicked(winW/2 + 20, winH/2 + 140, 140, 40)) return 2;
         }
         return 0;
     }

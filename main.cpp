@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
                     break;
                 } else if (exitCode == 2) {
                     nextGame = true;
-                   
+
                     continue;
                 }
             }

@@ -88,7 +88,14 @@ void BlackjackGame::render() {
     int radiusX = winW / 2 - 120;
     int radiusY = winH / 3;
     int centerX = winW / 2;
-    int centerY = winH - 280;
+
+
+    int centerY;
+    if (count >= 5) {
+        centerY = winH - 220;
+    } else {
+        centerY = winH - 280;
+    }
 
     for (int i = 0; i < count; ++i) {
         if (m_playerBets[i] == 0 && m_playerDone[i]) continue;
