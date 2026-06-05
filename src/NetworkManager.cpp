@@ -104,13 +104,11 @@ void NetworkManager::setOnClientMessage(std::function<void(const void*, int)> ca
 
 void NetworkManager::update() {
     if (m_role == Role::Server) {
-
         NET_StreamSocket* newClient = nullptr;
         while (NET_AcceptClient(m_server, &newClient) && newClient) {
             m_clients.push_back(newClient);
             std::cout << "New client connected, total: " << m_clients.size() << std::endl;
         }
-
         if (!m_clients.empty()) {
             char buffer[2048];
             int len = sizeof(buffer);

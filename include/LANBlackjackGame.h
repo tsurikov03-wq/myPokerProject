@@ -5,6 +5,7 @@
 #include "NetworkProtocol.h"
 #include <vector>
 #include <string>
+#include <SDL3/SDL.h>
 
 class LANBlackjackGame : public Game {
 public:

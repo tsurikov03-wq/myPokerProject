@@ -45,13 +45,11 @@ bool Renderer::init(const char* title, int width, int height) {
         return false;
     }
 
-
     const char* basePath = SDL_GetBasePath();
     std::string fontPath = (basePath ? std::string(basePath) : "") + "arial.ttf";
     m_font = TTF_OpenFont(fontPath.c_str(), 18);
     if (!m_font) {
         std::cerr << "Warning: font arial.ttf not found at " << fontPath << " - " << SDL_GetError() << std::endl;
-
         m_font = TTF_OpenFont("arial.ttf", 18);
         if (!m_font)
             std::cerr << "Also failed from current directory: " << SDL_GetError() << std::endl;

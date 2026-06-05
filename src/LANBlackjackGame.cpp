@@ -1,7 +1,6 @@
 #include "LANBlackjackGame.h"
 #include "NetworkManager.h"
 #include "Renderer.h"
-#include "NetworkProtocol.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -14,11 +13,6 @@ LANBlackjackGame::LANBlackjackGame(const std::vector<Player*>& players, bool isS
         m_playerDone.resize(m_players.size(), false);
         m_playerResult.resize(m_players.size(), "");
         m_playerResultColor.resize(m_players.size(), SDL_Color{200,200,200,255});
-    } else {
-        m_playerBets.clear();
-        m_playerDone.clear();
-        m_playerResult.clear();
-        m_playerResultColor.clear();
     }
     memset(&m_lastState, 0, sizeof(GameStatePacket));
 }
@@ -30,15 +24,12 @@ LANBlackjackGame::~LANBlackjackGame() {
 void LANBlackjackGame::run() {
     auto& net = NetworkManager::getInstance();
     if (m_isServer) {
-        net.setOnClientMessage([this](const void* data, int len) {
-            onPacketReceived(data, len);
-        });
+        net.setOnClientMessage([this](const void* data, int len) { onPacketReceived(data, len); });
         startNewRound();
     } else {
-        net.setOnClientMessage([this](const void* data, int len) {
-            onPacketReceived(data, len);
-        });
+        net.setOnClientMessage([this](const void* data, int len) { onPacketReceived(data, len); });
         m_gameOver = false;
+        m_waitingForAction = false;
     }
 }
 
@@ -97,43 +88,40 @@ void LANBlackjackGame::render() {
     auto& r = Renderer::getInstance();
     r.clear();
     r.drawTable();
-
     int winW, winH;
     r.getWindowSize(winW, winH);
 
-
     if (!m_isServer) {
-
+        // клиент отрисовывает m_lastState
         std::string dealerScore = m_lastState.gameOver ? std::to_string(m_lastState.dealerHandValue) : "?";
-        r.drawText("DEALER: " + dealerScore, winW / 2 - 60, 20, {255, 215, 0, 255});
-        int dx = winW / 2 - m_lastState.dealerCardCount * 40;
+        r.drawText("DEALER: " + dealerScore, winW/2 - 60, 20, {255,215,0,255});
+        int dx = winW/2 - m_lastState.dealerCardCount * 40;
         for (int i = 0; i < m_lastState.dealerCardCount; ++i) {
             Card card(static_cast<Suit>(m_lastState.dealerCards[i][1]), static_cast<Rank>(m_lastState.dealerCards[i][0]));
             bool hidden = (i == 1 && !m_lastState.gameOver);
             r.drawCard(card, dx, 60, 70, 105, hidden);
             dx += 80;
         }
-
         int count = m_lastState.playerCount;
-        int radiusX = winW / 2 - 120;
-        int radiusY = winH / 3;
-        int centerX = winW / 2;
+        int radiusX = winW/2 - 120;
+        int radiusY = winH/3;
+        int centerX = winW/2;
         int centerY = winH - 280;
         for (int i = 0; i < count; ++i) {
             double angle = M_PI;
-            if (count > 1) angle = M_PI - (M_PI * i / (count - 1));
-            else angle = M_PI / 2;
+            if (count > 1) angle = M_PI - (M_PI * i / (count-1));
+            else angle = M_PI/2;
             int x = centerX + (int)(radiusX * cos(angle)) - 35;
             int y = centerY - (int)(radiusY * sin(angle));
             SDL_Color nameColor = (m_lastState.currentPlayerId == m_lastState.players[i].playerId && m_waitingForAction && !m_gameOver) ?
                                   SDL_Color{0,255,0,255} : SDL_Color{255,255,255,255};
-            r.drawText(std::string(m_lastState.players[i].name), x - 20, y - 50, nameColor);
-            r.drawText("Money: $" + std::to_string(m_lastState.players[i].money), x - 20, y - 30, {200,200,200,255});
-            r.drawText("Bet: $" + std::to_string(m_lastState.players[i].bet), x - 20, y + 120, {255,215,0,255});
-            r.drawText("Score: " + std::to_string(m_lastState.players[i].handValue), x - 20, y + 140, {255,255,255,255});
+            r.drawText(m_lastState.players[i].name, x-20, y-50, nameColor);
+            r.drawText("Money: $" + std::to_string(m_lastState.players[i].money), x-20, y-30, {200,200,200,255});
+            r.drawText("Bet: $" + std::to_string(m_lastState.players[i].bet), x-20, y+120, {255,215,0,255});
+            r.drawText("Score: " + std::to_string(m_lastState.players[i].handValue), x-20, y+140, {255,255,255,255});
             for (int c = 0; c < m_lastState.players[i].cardCount; ++c) {
                 Card card(static_cast<Suit>(m_lastState.players[i].cards[c][1]), static_cast<Rank>(m_lastState.players[i].cards[c][0]));
-                r.drawCard(card, x + c * 25, y, 70, 105, false);
+                r.drawCard(card, x + c*25, y, 70, 105, false);
             }
         }
         if (m_waitingForAction && !m_gameOver) {
@@ -148,40 +136,40 @@ void LANBlackjackGame::render() {
         return;
     }
 
-
+    // Серверная отрисовка
     std::string dealerScore = m_waitingForAction ? "?" : std::to_string(m_dealer->getHandValue());
-    r.drawText("DEALER: " + dealerScore, winW / 2 - 60, 20, {255, 215, 0, 255});
-    int dx = winW / 2 - (int)m_dealer->getHand().size() * 40;
+    r.drawText("DEALER: " + dealerScore, winW/2 - 60, 20, {255,215,0,255});
+    int dx = winW/2 - (int)m_dealer->getHand().size() * 40;
     for (size_t i = 0; i < m_dealer->getHand().size(); ++i) {
         bool hidden = (i == 1 && m_waitingForAction);
         r.drawCard(m_dealer->getHand()[i], dx, 60, 70, 105, hidden);
         dx += 80;
     }
     int count = (int)m_players.size();
-    int radiusX = winW / 2 - 120;
-    int radiusY = winH / 3;
-    int centerX = winW / 2;
+    int radiusX = winW/2 - 120;
+    int radiusY = winH/3;
+    int centerX = winW/2;
     int centerY = winH - 280;
     for (int i = 0; i < count; ++i) {
         if (m_playerBets[i] == 0 && m_playerDone[i]) continue;
         double angle = M_PI;
-        if (count > 1) angle = M_PI - (M_PI * i / (count - 1));
-        else angle = M_PI / 2;
+        if (count > 1) angle = M_PI - (M_PI * i / (count-1));
+        else angle = M_PI/2;
         int x = centerX + (int)(radiusX * cos(angle)) - 35;
         int y = centerY - (int)(radiusY * sin(angle));
         SDL_Color nameColor = (i == m_currentPlayerIndex && m_waitingForAction) ? SDL_Color{0,255,0,255} : SDL_Color{255,255,255,255};
         std::string status = "";
         if (m_players[i]->isBust()) status = " (Bust!)";
         else if (m_playerDone[i]) status = " (Done)";
-        r.drawText(m_players[i]->getName() + status, x - 20, y - 50, nameColor);
-        r.drawText("Money: $" + std::to_string(m_players[i]->getMoney()), x - 20, y - 30, {200,200,200,255});
-        r.drawText("Bet: $" + std::to_string(m_playerBets[i]), x - 20, y + 120, {255,215,0,255});
-        r.drawText("Score: " + std::to_string(m_players[i]->getHandValue()), x - 20, y + 140, {255,255,255,255});
+        r.drawText(m_players[i]->getName() + status, x-20, y-50, nameColor);
+        r.drawText("Money: $" + std::to_string(m_players[i]->getMoney()), x-20, y-30, {200,200,200,255});
+        r.drawText("Bet: $" + std::to_string(m_playerBets[i]), x-20, y+120, {255,215,0,255});
+        r.drawText("Score: " + std::to_string(m_players[i]->getHandValue()), x-20, y+140, {255,255,255,255});
         if (!m_playerResult[i].empty()) {
-            r.drawText(m_playerResult[i], x - 20, y + 160, m_playerResultColor[i]);
+            r.drawText(m_playerResult[i], x-20, y+160, m_playerResultColor[i]);
         }
         for (size_t cardIdx = 0; cardIdx < m_players[i]->getHand().size(); ++cardIdx) {
-            r.drawCard(m_players[i]->getHand()[cardIdx], x + cardIdx * 25, y, 70, 105, false);
+            r.drawCard(m_players[i]->getHand()[cardIdx], x + cardIdx*25, y, 70, 105, false);
         }
     }
     if (m_waitingForAction && m_currentPlayerIndex < count) {
@@ -190,7 +178,7 @@ void LANBlackjackGame::render() {
             uint64_t currentTicks = SDL_GetTicks();
             if (m_botTimer == 0) m_botTimer = currentTicks;
             if (currentTicks - m_botTimer >= 600) {
-                std::string action = current->getAction({"hit", "stand"});
+                std::string action = current->getAction({"hit","stand"});
                 if (action == "hit") {
                     current->addCard(m_deck.dealCard());
                     if (current->isBust()) {
@@ -206,15 +194,15 @@ void LANBlackjackGame::render() {
             }
         } else {
             int btnY = winH - 70;
-            r.drawButton("Hit", winW / 2 - 220, btnY, 100, 50);
-            r.drawButton("Stand", winW / 2 - 110, btnY, 100, 50);
+            r.drawButton("Hit", winW/2 - 220, btnY, 100, 50);
+            r.drawButton("Stand", winW/2 - 110, btnY, 100, 50);
             if (current->getHand().size() == 2 && current->canAfford(m_playerBets[m_currentPlayerIndex])) {
-                r.drawButton("Double", winW / 2, btnY, 100, 50);
+                r.drawButton("Double", winW/2, btnY, 100, 50);
             }
         }
     } else if (m_gameOver) {
-        r.drawButton("Main Menu", winW / 2 - 160, winH / 2 + 120, 140, 40);
-        r.drawButton("Next Game", winW / 2 + 20, winH / 2 + 120, 140, 40);
+        r.drawButton("Main Menu", winW/2 - 160, winH/2 + 120, 140, 40);
+        r.drawButton("Next Game", winW/2 + 20, winH/2 + 120, 140, 40);
     }
     r.present();
 }
@@ -225,8 +213,8 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
             auto& r = Renderer::getInstance();
-            if (r.isButtonClicked(winW / 2 - 160, winH / 2 + 120, 140, 40)) return 1;
-            if (r.isButtonClicked(winW / 2 + 20, winH / 2 + 120, 140, 40)) return 2;
+            if (r.isButtonClicked(winW/2 - 160, winH/2 + 120, 140, 40)) return 1;
+            if (r.isButtonClicked(winW/2 + 20, winH/2 + 120, 140, 40)) return 2;
         }
         return 0;
     }
@@ -238,19 +226,19 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
                 Renderer::getInstance().getWindowSize(winW, winH);
                 auto& r = Renderer::getInstance();
                 int btnY = winH - 70;
-                if (r.isButtonClicked(winW / 2 - 220, btnY, 100, 50)) {
+                if (r.isButtonClicked(winW/2 - 220, btnY, 100, 50)) {
                     current->addCard(m_deck.dealCard());
                     if (current->isBust()) {
                         m_playerDone[m_currentPlayerIndex] = true;
                         nextPlayer();
                     }
                     sendFullStateToClient();
-                } else if (r.isButtonClicked(winW / 2 - 110, btnY, 100, 50)) {
+                } else if (r.isButtonClicked(winW/2 - 110, btnY, 100, 50)) {
                     m_playerDone[m_currentPlayerIndex] = true;
                     nextPlayer();
                     sendFullStateToClient();
                 } else if (current->getHand().size() == 2 && current->canAfford(m_playerBets[m_currentPlayerIndex]) &&
-                           r.isButtonClicked(winW / 2, btnY, 100, 50)) {
+                           r.isButtonClicked(winW/2, btnY, 100, 50)) {
                     int doubleBet = m_playerBets[m_currentPlayerIndex];
                     current->placeBet(doubleBet);
                     m_playerBets[m_currentPlayerIndex] += doubleBet;
@@ -262,17 +250,16 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
             }
         }
     } else {
-
         if (m_waitingForAction && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
             auto& r = Renderer::getInstance();
             int btnY = winH - 70;
-            if (r.isButtonClicked(winW / 2 - 220, btnY, 100, 50)) {
+            if (r.isButtonClicked(winW/2 - 220, btnY, 100, 50)) {
                 sendAction(BlackjackAction::Hit);
-            } else if (r.isButtonClicked(winW / 2 - 110, btnY, 100, 50)) {
+            } else if (r.isButtonClicked(winW/2 - 110, btnY, 100, 50)) {
                 sendAction(BlackjackAction::Stand);
-            } else if (r.isButtonClicked(winW / 2, btnY, 100, 50)) {
+            } else if (r.isButtonClicked(winW/2, btnY, 100, 50)) {
                 sendAction(BlackjackAction::Double);
             }
         }
@@ -338,21 +325,23 @@ void LANBlackjackGame::sendAction(BlackjackAction action) {
     NetworkManager::getInstance().sendToServer(&packet, sizeof(packet));
 }
 
-
 void LANBlackjackGame::onPacketReceived(const void* data, int len) {
     if (len < 1) return;
     PacketType type = *(PacketType*)data;
     if (type == PacketType::GameState && len >= sizeof(GameStatePacket)) {
         memcpy(&m_lastState, data, sizeof(GameStatePacket));
         m_gameOver = m_lastState.gameOver;
-        m_waitingForAction = !m_lastState.gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
+        if (!m_isServer) {
+            m_waitingForAction = !m_gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
+        }
     } else if (type == PacketType::PlayerAction && m_isServer && len >= sizeof(PlayerActionPacket)) {
         PlayerActionPacket action;
         memcpy(&action, data, sizeof(PlayerActionPacket));
         if (m_waitingForAction && action.playerId == m_currentPlayerIndex) {
+            Player* current = m_players[m_currentPlayerIndex];
             if (action.action == BlackjackAction::Hit) {
-                m_players[m_currentPlayerIndex]->addCard(m_deck.dealCard());
-                if (m_players[m_currentPlayerIndex]->isBust()) {
+                current->addCard(m_deck.dealCard());
+                if (current->isBust()) {
                     m_playerDone[m_currentPlayerIndex] = true;
                     nextPlayer();
                 }
@@ -360,12 +349,14 @@ void LANBlackjackGame::onPacketReceived(const void* data, int len) {
                 m_playerDone[m_currentPlayerIndex] = true;
                 nextPlayer();
             } else if (action.action == BlackjackAction::Double) {
-                int doubleBet = m_playerBets[m_currentPlayerIndex];
-                m_players[m_currentPlayerIndex]->placeBet(doubleBet);
-                m_playerBets[m_currentPlayerIndex] += doubleBet;
-                m_players[m_currentPlayerIndex]->addCard(m_deck.dealCard());
-                m_playerDone[m_currentPlayerIndex] = true;
-                nextPlayer();
+                if (current->getHand().size() == 2 && current->canAfford(m_playerBets[m_currentPlayerIndex])) {
+                    int doubleBet = m_playerBets[m_currentPlayerIndex];
+                    current->placeBet(doubleBet);
+                    m_playerBets[m_currentPlayerIndex] += doubleBet;
+                    current->addCard(m_deck.dealCard());
+                    m_playerDone[m_currentPlayerIndex] = true;
+                    nextPlayer();
+                }
             }
             sendFullStateToClient();
         }
@@ -376,7 +367,7 @@ void LANBlackjackGame::sendFullStateToClient() {
     if (!m_isServer) return;
     GameStatePacket packet;
     packet.type = PacketType::GameState;
-    packet.currentPlayerId = m_currentPlayerIndex < (int)m_players.size() ? m_currentPlayerIndex : 0;
+    packet.currentPlayerId = m_currentPlayerIndex;
     packet.dealerCardCount = (uint8_t)m_dealer->getHand().size();
     for (size_t i = 0; i < m_dealer->getHand().size(); ++i) {
         packet.dealerCards[i][0] = (uint8_t)m_dealer->getHand()[i].getRank();
@@ -388,9 +379,9 @@ void LANBlackjackGame::sendFullStateToClient() {
         packet.players[i].playerId = (uint32_t)i;
         strncpy(packet.players[i].name, m_players[i]->getName().c_str(), 19);
         packet.players[i].name[19] = '\0';
-        packet.players[i].money = (int16_t)m_players[i]->getMoney();
-        packet.players[i].bet = (int16_t)m_playerBets[i];
-        packet.players[i].handValue = (uint8_t)m_players[i]->getHandValue();
+        packet.players[i].money = m_players[i]->getMoney();
+        packet.players[i].bet = m_playerBets[i];
+        packet.players[i].handValue = m_players[i]->getHandValue();
         packet.players[i].cardCount = (uint8_t)m_players[i]->getHand().size();
         for (size_t c = 0; c < m_players[i]->getHand().size(); ++c) {
             packet.players[i].cards[c][0] = (uint8_t)m_players[i]->getHand()[c].getRank();
@@ -401,5 +392,5 @@ void LANBlackjackGame::sendFullStateToClient() {
         packet.players[i].isBot = m_players[i]->isBot();
     }
     packet.gameOver = m_gameOver;
-    NetworkManager::getInstance().sendToAll(&packet, sizeof(packet));
+    NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
 }

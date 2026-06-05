@@ -14,7 +14,7 @@ public:
     bool init();
     void quit();
 
-    void startBroadcasting(uint16_t gamePort, const char* serverName = "PokerServer");
+    void startBroadcasting(uint16_t port, const char* serverName = "PokerServer");
     void stopBroadcasting();
 
     void startDiscovery(uint16_t discoveryPort);
@@ -22,13 +22,14 @@ public:
 
     struct ServerInfo {
         std::string ip;
-        uint16_t gamePort;
+        uint16_t port;
         std::string name;
     };
     std::vector<ServerInfo> getServers() const;
+
     void setOnServerDiscovered(std::function<void(const ServerInfo&)> callback);
 
-    void update(); // вызывать в главном цикле
+    void update();
 
 private:
     NetworkDiscovery() = default;
@@ -38,7 +39,7 @@ private:
     bool m_discovering = false;
     NET_DatagramSocket* m_broadcastSocket = nullptr;
     NET_DatagramSocket* m_discoverySocket = nullptr;
-    uint16_t m_gamePort = 0;
+    uint16_t m_broadcastPort = 0;
     uint16_t m_discoveryPort = 0;
     std::vector<ServerInfo> m_servers;
     std::function<void(const ServerInfo&)> m_onServerDiscovered;

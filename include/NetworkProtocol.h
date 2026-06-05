@@ -2,7 +2,6 @@
 #define NETWORK_PROTOCOL_H
 
 #include <cstdint>
-#include <cstring>
 
 enum class PacketType : uint8_t {
     ServerInfo = 1,
@@ -14,9 +13,7 @@ enum class PacketType : uint8_t {
 };
 
 enum class BlackjackAction : uint8_t {
-    Hit = 0,
-    Stand = 1,
-    Double = 2
+    Hit, Stand, Double
 };
 
 #pragma pack(push, 1)
