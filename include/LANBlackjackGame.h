@@ -16,6 +16,8 @@ public:
     void render() override;
     int handleEvent(const SDL_Event& event) override;
 
+    void sendFullStateToClient(); // делаем публичным для периодической отправки
+
 private:
     bool m_isServer;
     uint32_t m_clientPlayerId;
@@ -37,7 +39,6 @@ private:
     void startNewRound();
     void sendAction(BlackjackAction action);
     void onPacketReceived(const void* data, int len);
-    void sendFullStateToClient();
 };
 
 #endif
