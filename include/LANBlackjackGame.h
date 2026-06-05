@@ -16,7 +16,7 @@ public:
     void render() override;
     int handleEvent(const SDL_Event& event) override;
 
-    void sendFullStateToClient(); // делаем публичным для периодической отправки
+    void sendFullStateToClient(); // публичный для вызова из main
 
 private:
     bool m_isServer;

@@ -50,7 +50,6 @@ int main(int argc, char* argv[]) {
                     game.run();
                     bool gameRunning = true;
                     int exitCode = 0;
-                    // Добавим переменную для периодической отправки состояния
                     uint64_t lastStateSend = SDL_GetTicks();
                     while (gameRunning) {
                         SDL_Event event;
@@ -66,10 +65,10 @@ int main(int argc, char* argv[]) {
                                 gameRunning = false;
                             }
                         }
-                        // Периодически отправляем состояние клиентам (каждые 500 мс)
+                        // Периодически отправляем состояние клиентам
                         uint64_t now = SDL_GetTicks();
                         if (now - lastStateSend >= 500) {
-                            game.sendFullStateToClient(); // добавим этот метод
+                            game.sendFullStateToClient();
                             lastStateSend = now;
                         }
                         net.update();
@@ -96,7 +95,7 @@ int main(int argc, char* argv[]) {
                 }
                 bool nextGame = false;
                 do {
-                    std::vector<Player*> players; // пусто, состояние с сервера
+                    std::vector<Player*> players;
                     LANBlackjackGame game(players, false);
                     game.run();
                     bool gameRunning = true;
@@ -134,7 +133,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // Обычные режимы
+        // Обычные режимы Blackjack / Poker
         Menu::PlayerSetup playersSetup = Menu::showPlayerSetupMenu();
         if (playersSetup.humans == 0 && playersSetup.bots == 0) continue;
 
