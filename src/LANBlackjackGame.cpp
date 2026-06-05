@@ -419,3 +419,4 @@ void LANBlackjackGame::sendFullStateToClient() {
     NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
     std::cout << "[SERVER] Sent GameStatePacket to client" << std::endl;
 }
+//
