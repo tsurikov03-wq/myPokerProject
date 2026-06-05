@@ -27,7 +27,6 @@ int main(int argc, char* argv[]) {
         Menu::GameChoice choice = Menu::showMainMenu();
         if (choice == Menu::GameChoice::Quit) break;
 
-        // LAN Blackjack
         if (choice == Menu::GameChoice::LANBlackjackHost || choice == Menu::GameChoice::LANBlackjackJoin) {
             auto& net = NetworkManager::getInstance();
             auto& disc = NetworkDiscovery::getInstance();
@@ -82,6 +81,7 @@ int main(int argc, char* argv[]) {
                 }
                 auto servers = disc.getServers();
                 std::string chosenIP;
+                uint16_t port = 12345;
                 if (!servers.empty()) {
                     for (size_t i = 0; i < servers.size(); ++i) {
                         std::cout << i+1 << ". " << servers[i].ip << ":" << servers[i].port << " (" << servers[i].name << ")" << std::endl;
@@ -91,22 +91,24 @@ int main(int argc, char* argv[]) {
                     std::cin >> idx;
                     if (idx >= 1 && idx <= (int)servers.size()) {
                         chosenIP = servers[idx-1].ip;
+                        port = servers[idx-1].port;
                     } else {
                         chosenIP = Menu::inputText("Invalid, enter IP manually:", "127.0.0.1", 400, 300);
+                        std::string portStr = Menu::inputText("Enter port (default 12345):", "12345", 400, 350);
+                        if (!portStr.empty()) port = (uint16_t)std::stoi(portStr);
                     }
                 } else {
                     chosenIP = Menu::inputText("No servers found, enter IP manually:", "127.0.0.1", 400, 300);
+                    std::string portStr = Menu::inputText("Enter port (default 12345):", "12345", 400, 350);
+                    if (!portStr.empty()) port = (uint16_t)std::stoi(portStr);
                 }
-                uint16_t port = 12345;
-                std::string portStr = Menu::inputText("Enter port (default 12345):", "12345", 400, 350);
-                if (!portStr.empty()) port = (uint16_t)std::stoi(portStr);
                 if (!net.connectToServer(chosenIP.c_str(), port)) {
                     disc.stopDiscovery();
                     net.quit();
                     disc.quit();
                     continue;
                 }
-                std::vector<Player*> players; // пусто
+                std::vector<Player*> players;
                 LANBlackjackGame game(players, false);
                 game.run();
                 bool gameRunning = true;
@@ -137,7 +139,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // Обычные режимы Blackjack / Poker
+        // Обычные режимы
         Menu::PlayerSetup playersSetup = Menu::showPlayerSetupMenu();
         if (playersSetup.humans == 0 && playersSetup.bots == 0) continue;
 
