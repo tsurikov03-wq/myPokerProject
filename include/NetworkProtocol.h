@@ -34,6 +34,10 @@ struct PlayerNetState {
     bool bust;
     bool done;
     bool isBot;
+    char result[20];          // строка результата
+    uint8_t resultColorR;     // цвет результата (красный/зелёный/жёлтый)
+    uint8_t resultColorG;
+    uint8_t resultColorB;
 };
 
 struct GameStatePacket {
