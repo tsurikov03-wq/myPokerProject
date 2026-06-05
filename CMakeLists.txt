@@ -50,6 +50,14 @@ add_custom_command(TARGET MyPokerProject POST_BUILD
         COMMENT "Copying card textures to build directory..."
 )
 
+# Копирование шрифта arial.ttf, если он есть в папке проекта
+add_custom_command(TARGET MyPokerProject POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/arial.ttf"
+        "$<TARGET_FILE_DIR:MyPokerProject>/arial.ttf"
+        COMMENT "Copying font file..."
+)
+
 if(WIN32)
     add_custom_command(TARGET MyPokerProject POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different

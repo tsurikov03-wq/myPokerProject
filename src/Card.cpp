@@ -48,15 +48,20 @@ std::string Card::toString() const {
 
 std::string Card::getTextureName() const {
     std::string rankStr;
-    if (m_rank >= Rank::Two && m_rank <= Rank::Ten) {
-        rankStr = std::to_string(static_cast<int>(m_rank) + 2);
-    } else {
-        switch (m_rank) {
-            case Rank::Jack:  rankStr = "jack"; break;
-            case Rank::Queen: rankStr = "queen"; break;
-            case Rank::King:  rankStr = "king"; break;
-            case Rank::Ace:   rankStr = "ace"; break;
-        }
+    switch (m_rank) {
+        case Rank::Two:   rankStr = "two"; break;
+        case Rank::Three: rankStr = "three"; break;
+        case Rank::Four:  rankStr = "four"; break;
+        case Rank::Five:  rankStr = "five"; break;
+        case Rank::Six:   rankStr = "six"; break;
+        case Rank::Seven: rankStr = "seven"; break;
+        case Rank::Eight: rankStr = "eight"; break;
+        case Rank::Nine:  rankStr = "nine"; break;
+        case Rank::Ten:   rankStr = "ten"; break;
+        case Rank::Jack:  rankStr = "jack"; break;
+        case Rank::Queen: rankStr = "queen"; break;
+        case Rank::King:  rankStr = "king"; break;
+        case Rank::Ace:   rankStr = "ace"; break;
     }
 
     std::string suitStr;
@@ -66,5 +71,5 @@ std::string Card::getTextureName() const {
         case Suit::Hearts:   suitStr = "hearts"; break;
         case Suit::Spades:   suitStr = "spades"; break;
     }
-    return rankStr + "_of_" + suitStr;
+    return rankStr + "_" + suitStr;
 }

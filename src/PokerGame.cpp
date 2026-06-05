@@ -5,6 +5,51 @@
 #include <cmath>
 #include <iostream>
 
+
+struct HandRankResult {
+    int rank;
+    std::vector<int> kickers;
+};
+
+static HandRankResult getFullHandRank(const std::vector<Card>& hand) {
+
+    int bestCategory = -1;
+    std::vector<int> bestKickers;
+
+    std::vector<int> indices = {0,1,2,3,4,5,6};
+
+    std::vector<std::vector<int>> combos;
+    for (int i = 0; i < 7; ++i)
+        for (int j = i+1; j < 7; ++j) {
+            std::vector<int> combo;
+            for (int k = 0; k < 7; ++k)
+                if (k != i && k != j) combo.push_back(k);
+            combos.push_back(combo);
+        }
+
+    for (const auto& combo : combos) {
+        std::vector<Card> five;
+        for (int idx : combo) five.push_back(hand[idx]);
+        int cat = evaluateHandRank(five);
+
+        if (cat > bestCategory) {
+            bestCategory = cat;
+
+            std::vector<int> vals;
+            for (const auto& c : five) vals.push_back(c.getPokerValue());
+            std::sort(vals.begin(), vals.end(), std::greater<int>());
+            bestKickers = vals;
+        } else if (cat == bestCategory) {
+
+            std::vector<int> vals;
+            for (const auto& c : five) vals.push_back(c.getPokerValue());
+            std::sort(vals.begin(), vals.end(), std::greater<int>());
+            if (vals > bestKickers) bestKickers = vals;
+        }
+    }
+    return {bestCategory, bestKickers};
+}
+
 PokerGame::PokerGame(const std::vector<Player*>& players)
     : Game(players), m_stage(Stage::Preflop), m_smallBlind(10), m_bigBlind(20),
       m_currentBet(0), m_pot(0), m_dealerButton(0), m_currentPlayerIdx(0),
@@ -125,11 +170,46 @@ bool PokerGame::isRoundComplete() {
 }
 
 void PokerGame::evaluateAndPayWinners() {
+
+    std::vector<Player*> activePlayers;
     for (auto p : m_players) {
-        if (!p->m_hasFolded) {
-            p->winMoney(m_pot);
-            break;
+        if (!p->m_hasFolded && p->getMoney() > 0) {
+            activePlayers.push_back(p);
         }
+    }
+    if (activePlayers.empty()) return;
+
+
+    std::vector<std::pair<Player*, HandRankResult>> ranks;
+    for (Player* p : activePlayers) {
+        std::vector<Card> allCards = p->getHand();
+        allCards.insert(allCards.end(), m_communityCards.begin(), m_communityCards.end());
+        HandRankResult res = getFullHandRank(allCards);
+        ranks.push_back({p, res});
+    }
+
+
+    std::sort(ranks.begin(), ranks.end(),
+        [](const std::pair<Player*, HandRankResult>& a,
+           const std::pair<Player*, HandRankResult>& b) {
+            if (a.second.rank != b.second.rank)
+                return a.second.rank > b.second.rank;
+            return a.second.kickers > b.second.kickers;
+        });
+
+    int bestRank = ranks[0].second.rank;
+    auto bestKickers = ranks[0].second.kickers;
+    std::vector<Player*> winners;
+    for (const auto& entry : ranks) {
+        if (entry.second.rank == bestRank && entry.second.kickers == bestKickers)
+            winners.push_back(entry.first);
+        else
+            break;
+    }
+
+    int share = m_pot / (int)winners.size();
+    for (Player* w : winners) {
+        w->winMoney(share);
     }
     m_pot = 0;
 }

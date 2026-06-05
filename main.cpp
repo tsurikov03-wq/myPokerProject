@@ -41,6 +41,8 @@ int main(int argc, char* argv[]) {
         if (game) {
             game->run();
             bool gameRunning = true;
+            bool waitingForExit = false;
+
             while (gameRunning) {
                 SDL_Event event;
                 while (SDL_PollEvent(&event)) {
@@ -48,15 +50,22 @@ int main(int argc, char* argv[]) {
                         gameRunning = false;
                         quit = true;
                     }
-                    game->handleEvent(event);
+                    bool shouldExit = game->handleEvent(event);
+                    if (shouldExit && game->isGameOver()) {
+                        waitingForExit = true;
+                        gameRunning = false;
+                    }
                 }
                 game->render();
                 SDL_Delay(16);
-                if (game->isGameOver()) gameRunning = false;
+
+                if (game->isGameOver() && waitingForExit) {
+                    gameRunning = false;
+                }
             }
             delete game;
         }
-        
+
         for (Player* p : players) {
             delete p;
         }

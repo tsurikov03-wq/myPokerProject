@@ -4,7 +4,6 @@
 #include <vector>
 #include "Card.h"
 
-
 int evaluateHandRank(const std::vector<Card>& hand);
 
 #endif
