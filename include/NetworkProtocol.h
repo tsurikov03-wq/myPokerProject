@@ -24,7 +24,7 @@ enum class PokerActionType : uint8_t {
 
 #pragma pack(push, 1)
 
-// Blackjack structures
+
 struct PlayerActionPacket {
     PacketType type;
     uint32_t playerId;
@@ -59,12 +59,12 @@ struct GameStatePacket {
     bool gameOver;
 };
 
-// Poker structures
+
 struct PokerActionPacket {
-    PacketType type;          // = PokerAction
+    PacketType type;
     uint32_t playerId;
     PokerActionType action;
-    uint32_t raiseAmount;     // для Raise
+    uint32_t raiseAmount;
 };
 
 struct PlayerPokerState {
@@ -73,7 +73,7 @@ struct PlayerPokerState {
     int32_t money;
     int32_t currentBet;
     uint8_t cardCount;
-    uint8_t cards[2][2];      // две карты
+    uint8_t cards[2][2];
     bool isFolded;
     bool isAllIn;
     bool hasActed;
@@ -81,13 +81,13 @@ struct PlayerPokerState {
 };
 
 struct PokerStatePacket {
-    PacketType type;          // = PokerState
+    PacketType type;
     uint32_t currentPlayerId;
     uint32_t pot;
-    uint32_t currentBet;       // текущая ставка для уравнивания
-    uint8_t stage;             // 0=preflop,1=flop,2=turn,3=river,4=showdown
+    uint32_t currentBet;
+    uint8_t stage;
     uint8_t communityCardCount;
-    uint8_t communityCards[5][2];  // до 5 общих карт
+    uint8_t communityCards[5][2];
     uint8_t playerCount;
     PlayerPokerState players[6];
     bool gameOver;

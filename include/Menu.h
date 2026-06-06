@@ -12,8 +12,8 @@ public:
         Poker,
         LANBlackjackHost,
         LANBlackjackJoin,
-        LANPokerHost,      // добавлено
-        LANPokerJoin,      // добавлено
+        LANPokerHost,
+        LANPokerJoin,
         Quit,
         None
     };
