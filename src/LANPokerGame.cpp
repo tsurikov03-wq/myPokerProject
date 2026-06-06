@@ -7,15 +7,101 @@
 #include <cstring>
 #include <iostream>
 #include <map>
+#include <vector>
 
+// Структура для результата оценки руки
 struct HandRankResult {
-    int rank;
-    std::vector<int> kickers;
+    int rank;                 // ранг комбинации (9=роял-флеш, 8=стрит-флеш, ... 0=старшая)
+    std::vector<int> values; // значения карт, участвующих в комбинации и кикеры
 };
 
+// Оценка комбинации из 5 карт (стандартная функция покера)
+static HandRankResult evaluateHand(const std::vector<Card>& hand) {
+    if (hand.size() != 5) return {0, {}};
+    // Сортировка по убыванию
+    std::vector<int> ranks;
+    std::map<int, int> rankCount;
+    for (const auto& c : hand) {
+        int r = c.getPokerValue();
+        ranks.push_back(r);
+        rankCount[r]++;
+    }
+    std::sort(ranks.begin(), ranks.end(), std::greater<int>());
+
+    bool flush = true;
+    Suit firstSuit = hand[0].getSuit();
+    for (size_t i = 1; i < hand.size(); ++i)
+        if (hand[i].getSuit() != firstSuit) { flush = false; break; }
+
+    bool straight = false;
+    int straightHigh = 0;
+    // Проверка обычного стрита (разница 4)
+    if (ranks[0] - ranks[4] == 4) {
+        straight = true;
+        straightHigh = ranks[0];
+    }
+    // Проверка стрита 5-4-3-2-A
+    if (ranks[0] == 14 && ranks[1] == 5 && ranks[2] == 4 && ranks[3] == 3 && ranks[4] == 2) {
+        straight = true;
+        straightHigh = 5;
+    }
+
+    // Определение комбинации
+    int category = 0;
+    std::vector<int> values; // для хранения рангов комбинации и кикеров
+
+    if (flush && straight && straightHigh == 14) {
+        category = 9; // Роял-флеш
+        values = {14};
+    } else if (flush && straight) {
+        category = 8; // Стрит-флеш
+        values = {straightHigh};
+    } else {
+        // Подсчёт пар и троек
+        std::vector<std::pair<int, int>> freq; // (rank, count)
+        for (auto& p : rankCount) freq.push_back({p.first, p.second});
+        std::sort(freq.begin(), freq.end(), [](const auto& a, const auto& b) {
+            if (a.second != b.second) return a.second > b.second;
+            return a.first > b.first;
+        });
+        if (freq[0].second == 4) {
+            category = 7; // Каре
+            values.push_back(freq[0].first);
+            for (auto& f : freq) if (f.second != 4) values.push_back(f.first);
+        } else if (freq[0].second == 3 && freq[1].second == 2) {
+            category = 6; // Фулл-хаус
+            values.push_back(freq[0].first);
+            values.push_back(freq[1].first);
+        } else if (flush) {
+            category = 5; // Флеш
+            values = ranks;
+        } else if (straight) {
+            category = 4; // Стрит
+            values = {straightHigh};
+        } else if (freq[0].second == 3) {
+            category = 3; // Сет (тройка)
+            values.push_back(freq[0].first);
+            for (auto& f : freq) if (f.second != 3) values.push_back(f.first);
+        } else if (freq[0].second == 2 && freq[1].second == 2) {
+            category = 2; // Две пары
+            values.push_back(freq[0].first);
+            values.push_back(freq[1].first);
+            for (auto& f : freq) if (f.second != 2) values.push_back(f.first);
+        } else if (freq[0].second == 2) {
+            category = 1; // Пара
+            values.push_back(freq[0].first);
+            for (auto& f : freq) if (f.second != 2) values.push_back(f.first);
+        } else {
+            category = 0; // Старшая карта
+            values = ranks;
+        }
+    }
+    return {category, values};
+}
+
+// Выбор лучшей 5-карточной комбинации из 7 карт
 static HandRankResult getFullHandRank(const std::vector<Card>& hand) {
-    int bestCategory = -1;
-    std::vector<int> bestKickers;
+    // Генерируем все сочетания 5 из 7
     std::vector<std::vector<int>> combos;
     for (int i = 0; i < 7; ++i)
         for (int j = i+1; j < 7; ++j) {
@@ -24,26 +110,22 @@ static HandRankResult getFullHandRank(const std::vector<Card>& hand) {
                 if (k != i && k != j) combo.push_back(k);
             combos.push_back(combo);
         }
+    HandRankResult best = { -1, {} };
     for (const auto& combo : combos) {
         std::vector<Card> five;
         for (int idx : combo) five.push_back(hand[idx]);
-        int cat = evaluateHandRank(five);
-        if (cat > bestCategory) {
-            bestCategory = cat;
-            std::vector<int> vals;
-            for (const auto& c : five) vals.push_back(c.getPokerValue());
-            std::sort(vals.begin(), vals.end(), std::greater<int>());
-            bestKickers = vals;
-        } else if (cat == bestCategory) {
-            std::vector<int> vals;
-            for (const auto& c : five) vals.push_back(c.getPokerValue());
-            std::sort(vals.begin(), vals.end(), std::greater<int>());
-            if (vals > bestKickers) bestKickers = vals;
+        HandRankResult res = evaluateHand(five);
+        if (res.rank > best.rank) {
+            best = res;
+        } else if (res.rank == best.rank) {
+            // Сравнение по значениям (лексикографически)
+            if (res.values > best.values) best = res;
         }
     }
-    return {bestCategory, bestKickers};
+    return best;
 }
 
+// Конструктор
 LANPokerGame::LANPokerGame(const std::vector<Player*>& players, bool isServer)
     : Game(players), m_isServer(isServer), m_clientPlayerId(0),
       m_stage(Stage::Preflop), m_smallBlind(10), m_bigBlind(20),
@@ -247,19 +329,21 @@ void LANPokerGame::evaluateAndPayWinners() {
         ranks.push_back({p, res});
     }
 
+    // Сортировка по рангу, затем по значениям (лексикографически)
     std::sort(ranks.begin(), ranks.end(),
         [](const std::pair<Player*, HandRankResult>& a,
            const std::pair<Player*, HandRankResult>& b) {
             if (a.second.rank != b.second.rank)
                 return a.second.rank > b.second.rank;
-            return a.second.kickers > b.second.kickers;
+            return a.second.values > b.second.values;
         });
 
+    // Определяем победителей (может быть ничья)
     int bestRank = ranks[0].second.rank;
-    auto bestKickers = ranks[0].second.kickers;
+    auto bestValues = ranks[0].second.values;
     std::vector<Player*> winners;
     for (const auto& entry : ranks) {
-        if (entry.second.rank == bestRank && entry.second.kickers == bestKickers)
+        if (entry.second.rank == bestRank && entry.second.values == bestValues)
             winners.push_back(entry.first);
         else
             break;
@@ -270,6 +354,7 @@ void LANPokerGame::evaluateAndPayWinners() {
         w->winMoney(share);
     }
 
+    // Формируем текст победителя
     m_winnerText = "Winner: ";
     for (size_t i = 0; i < winners.size(); ++i) {
         if (i > 0) m_winnerText += ", ";
@@ -396,7 +481,6 @@ void LANPokerGame::render() {
         else if (m_players[i]->m_isAllIn) status = " (All-In)";
         r.drawText(m_players[i]->getName() + " ($" + std::to_string(m_players[i]->getMoney()) + ")" + status, x, y - 25, nameColor);
         r.drawText("Bet: $" + std::to_string(m_players[i]->m_currentBet), x, y - 5, {255,255,0,255});
-        // Исправление: показываем карты только для своего игрока (индекс 0) и на шоудауне
         bool showCards = (m_stage == Stage::Showdown) || (i == 0 && m_waitingForAction && !m_gameOver);
         if (m_players[i]->isBot() && m_stage != Stage::Showdown) showCards = false;
         if (isFolded) showCards = false;
