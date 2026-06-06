@@ -99,7 +99,7 @@ void LANBlackjackGame::render() {
     r.getWindowSize(winW, winH);
 
     if (!m_isServer) {
-        // Клиент отрисовывает m_lastState
+        // ---------- КЛИЕНТ ----------
         std::string dealerScore = m_lastState.gameOver ? std::to_string(m_lastState.dealerHandValue) : "?";
         r.drawText("DEALER: " + dealerScore, winW/2 - 60, 20, {255,215,0,255});
         int dx = winW/2 - m_lastState.dealerCardCount * 40;
@@ -135,12 +135,11 @@ void LANBlackjackGame::render() {
                 r.drawCard(card, x + c*25, y, 70, 105, false);
             }
         }
-        // Рисуем кнопки для клиента (с учётом возможности Double)
+        // Кнопки для клиента
         if (m_waitingForAction && !m_gameOver) {
             int btnY = winH - 70;
             r.drawButton("Hit", winW/2 - 220, btnY, 100, 50);
             r.drawButton("Stand", winW/2 - 110, btnY, 100, 50);
-            // Добавляем Double, если у клиента две карты и достаточно денег
             if (m_lastState.playerCount > m_clientPlayerId && m_lastState.players[m_clientPlayerId].cardCount == 2) {
                 int16_t money = m_lastState.players[m_clientPlayerId].money;
                 int16_t bet = m_lastState.players[m_clientPlayerId].bet;
@@ -156,7 +155,7 @@ void LANBlackjackGame::render() {
         return;
     }
 
-    // Серверная отрисовка (локальная) – без изменений
+    // ---------- СЕРВЕР (ХОСТ) ----------
     std::string dealerScore = m_waitingForAction ? "?" : std::to_string(m_dealer->getHandValue());
     r.drawText("DEALER: " + dealerScore, winW/2 - 60, 20, {255,215,0,255});
     int dx = winW/2 - (int)m_dealer->getHand().size() * 40;
@@ -192,7 +191,8 @@ void LANBlackjackGame::render() {
             r.drawCard(m_players[i]->getHand()[cardIdx], x + cardIdx*25, y, 70, 105, false);
         }
     }
-    if (m_waitingForAction && m_currentPlayerIndex < count) {
+    // Кнопки для сервера – показываем ТОЛЬКО когда текущий игрок – хост (индекс 0)
+    if (m_waitingForAction && m_currentPlayerIndex < count && m_currentPlayerIndex == 0) {
         Player* current = m_players[m_currentPlayerIndex];
         if (current->isBot()) {
             uint64_t currentTicks = SDL_GetTicks();
@@ -240,7 +240,7 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
     }
 
     if (m_isServer) {
-        // Сервер управляет только игроком с индексом 0 (Host)
+        // Сервер обрабатывает действия только для хоста (индекс 0) и только когда его ход
         if (m_waitingForAction && m_currentPlayerIndex == 0 && m_currentPlayerIndex < (int)m_players.size()) {
             Player* current = m_players[m_currentPlayerIndex];
             if (!current->isBot() && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -272,7 +272,7 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
             }
         }
     } else {
-        // Клиент управляет только игроком с индексом 1 (Client)
+        // Клиент обрабатывает действия только для своего игрока (индекс 1) и только когда его ход
         if (m_waitingForAction && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
@@ -283,7 +283,6 @@ int LANBlackjackGame::handleEvent(const SDL_Event& event) {
             } else if (r.isButtonClicked(winW/2 - 110, btnY, 100, 50)) {
                 sendAction(BlackjackAction::Stand);
             } else if (r.isButtonClicked(winW/2, btnY, 100, 50)) {
-                // Проверка возможности Double
                 if (m_lastState.playerCount > m_clientPlayerId && m_lastState.players[m_clientPlayerId].cardCount == 2) {
                     int16_t money = m_lastState.players[m_clientPlayerId].money;
                     int16_t bet = m_lastState.players[m_clientPlayerId].bet;
