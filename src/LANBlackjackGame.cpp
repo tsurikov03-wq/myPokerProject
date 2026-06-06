@@ -443,4 +443,4 @@ void LANBlackjackGame::sendFullStateToClient() {
     packet.gameOver = m_gameOver;
     NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
     std::cout << "[SERVER] Sent GameStatePacket to client" << std::endl;
-}
+}//work
