@@ -53,6 +53,7 @@ LANPokerGame::LANPokerGame(const std::vector<Player*>& players, bool isServer)
     if (!m_isServer) {
         m_players.clear();
     }
+    std::cout << "[POKER] Constructor: isServer=" << isServer << ", players.size=" << players.size() << std::endl;
 }
 
 LANPokerGame::~LANPokerGame() {}
@@ -68,20 +69,222 @@ void LANPokerGame::run() {
         m_gameOver = false;
         m_waitingForAction = false;
         m_clientPlayerId = 1;
-        std::cout << "[POKER CLIENT] Waiting for game state... clientPlayerId=" << m_clientPlayerId << std::endl;
+        std::cout << "[POKER CLIENT] Client ID = " << m_clientPlayerId << std::endl;
     }
 }
 
 void LANPokerGame::startNewRound() {
-    // ... (код полностью как в предыдущей версии, без изменений) ...
-    // Для краткости не повторяю, но он должен быть полным.
-    // Я приведу полный файл в конце.
+    std::cout << "[SERVER] startNewRound: players=" << m_players.size() << std::endl;
+    for (auto p : m_players) {
+        std::cout << "  " << p->getName() << " money=" << p->getMoney() << std::endl;
+    }
+
+    m_gameOver = false;
+    m_deck.reset();
+    m_stage = Stage::Preflop;
+    m_communityCards.clear();
+    m_pot = 0;
+    m_currentBet = 0;
+    m_lastRaiserIdx = -1;
+    m_winnerText = "";
+
+    for (auto p : m_players) {
+        p->clearHand();
+        if (p->getMoney() <= 0) {
+            p->m_hasFolded = true;
+            p->m_isAllIn = false;
+            p->m_hasActed = true;
+        } else {
+            p->m_hasFolded = false;
+            p->m_isAllIn = false;
+            p->m_hasActed = false;
+        }
+        p->m_currentBet = 0;
+    }
+
+    for (int i = 0; i < 2; ++i) {
+        for (auto p : m_players) {
+            if (!p->m_hasFolded) {
+                p->addCard(m_deck.dealCard());
+            }
+        }
+    }
+
+    while (m_players[m_dealerButton]->m_hasFolded) {
+        m_dealerButton = (m_dealerButton + 1) % m_players.size();
+    }
+    int sbIdx = (m_dealerButton + 1) % m_players.size();
+    int bbIdx = (sbIdx + 1) % m_players.size();
+    while (m_players[sbIdx]->m_hasFolded) sbIdx = (sbIdx + 1) % m_players.size();
+    while (m_players[bbIdx]->m_hasFolded) bbIdx = (bbIdx + 1) % m_players.size();
+
+    if (m_players[sbIdx]->getMoney() >= m_smallBlind) {
+        m_players[sbIdx]->placeBet(m_smallBlind);
+        m_pot += m_smallBlind;
+        m_players[sbIdx]->m_currentBet = m_smallBlind;
+    } else {
+        m_players[sbIdx]->m_hasFolded = true;
+    }
+    if (m_players[bbIdx]->getMoney() >= m_bigBlind) {
+        m_players[bbIdx]->placeBet(m_bigBlind);
+        m_pot += m_bigBlind;
+        m_players[bbIdx]->m_currentBet = m_bigBlind;
+    } else {
+        m_players[bbIdx]->m_hasFolded = true;
+    }
+
+    m_currentBet = m_bigBlind;
+    m_currentPlayerIdx = (bbIdx + 1) % m_players.size();
+    while (m_players[m_currentPlayerIdx]->m_hasFolded) {
+        m_currentPlayerIdx = (m_currentPlayerIdx + 1) % m_players.size();
+    }
+
+    m_playersInHand = 0;
+    for (auto p : m_players) if (!p->m_hasFolded) m_playersInHand++;
+    m_waitingForAction = true;
+    m_lastRaiserIdx = bbIdx;
+
+    if (m_playersInHand <= 1) {
+        for (auto p : m_players) {
+            if (!p->m_hasFolded) {
+                p->winMoney(m_pot);
+                m_winnerText = p->getName() + " wins the pot (everyone else folded)!";
+                m_gameOver = true;
+            }
+        }
+    }
+    sendFullStateToClient();
+    std::cout << "[SERVER] startNewRound done, m_waitingForAction=" << m_waitingForAction << ", currentPlayer=" << m_currentPlayerIdx << std::endl;
 }
 
-void LANPokerGame::advanceStage() { /* полный код */ }
-void LANPokerGame::nextPlayer() { /* полный код */ }
-bool LANPokerGame::isRoundComplete() { /* полный код */ }
-void LANPokerGame::evaluateAndPayWinners() { /* полный код */ }
+void LANPokerGame::advanceStage() {
+    int activeCount = 0;
+    Player* lastPlayer = nullptr;
+    for (auto p : m_players) {
+        if (!p->m_hasFolded) {
+            activeCount++;
+            lastPlayer = p;
+        }
+    }
+    if (activeCount == 1 && m_stage != Stage::Showdown) {
+        lastPlayer->winMoney(m_pot);
+        m_pot = 0;
+        m_gameOver = true;
+        m_winnerText = lastPlayer->getName() + " wins the pot (everyone else folded)!";
+        sendFullStateToClient();
+        return;
+    }
+
+    switch (m_stage) {
+        case Stage::Preflop:
+            m_stage = Stage::Flop;
+            m_communityCards.push_back(m_deck.dealCard());
+            m_communityCards.push_back(m_deck.dealCard());
+            m_communityCards.push_back(m_deck.dealCard());
+            break;
+        case Stage::Flop:
+            m_stage = Stage::Turn;
+            m_communityCards.push_back(m_deck.dealCard());
+            break;
+        case Stage::Turn:
+            m_stage = Stage::River;
+            m_communityCards.push_back(m_deck.dealCard());
+            break;
+        case Stage::River:
+            m_stage = Stage::Showdown;
+            evaluateAndPayWinners();
+            m_gameOver = true;
+            sendFullStateToClient();
+            return;
+        default: break;
+    }
+    m_currentBet = 0;
+    m_lastRaiserIdx = -1;
+    for (auto p : m_players) {
+        if (!p->m_hasFolded && !p->m_isAllIn) p->m_hasActed = false;
+        p->m_currentBet = 0;
+    }
+    m_currentPlayerIdx = (m_dealerButton + 1) % m_players.size();
+    while (m_players[m_currentPlayerIdx]->m_hasFolded)
+        m_currentPlayerIdx = (m_currentPlayerIdx + 1) % m_players.size();
+    m_waitingForAction = true;
+    sendFullStateToClient();
+}
+
+void LANPokerGame::nextPlayer() {
+    int start = m_currentPlayerIdx;
+    do {
+        m_currentPlayerIdx = (m_currentPlayerIdx + 1) % m_players.size();
+    } while (m_players[m_currentPlayerIdx]->m_hasFolded && m_currentPlayerIdx != start);
+    if (isRoundComplete()) advanceStage();
+    else sendFullStateToClient();
+}
+
+bool LANPokerGame::isRoundComplete() {
+    int active = 0, acted = 0;
+    for (auto p : m_players) {
+        if (!p->m_hasFolded) {
+            active++;
+            if (p->m_hasActed || p->m_isAllIn) acted++;
+        }
+    }
+    bool allBetsEqual = true;
+    int betAmount = -1;
+    for (auto p : m_players) {
+        if (!p->m_hasFolded && !p->m_isAllIn) {
+            if (betAmount == -1) betAmount = p->m_currentBet;
+            else if (p->m_currentBet != betAmount) allBetsEqual = false;
+        }
+    }
+    return (acted >= active && allBetsEqual) && active > 0;
+}
+
+void LANPokerGame::evaluateAndPayWinners() {
+    std::vector<Player*> activePlayers;
+    for (auto p : m_players) {
+        if (!p->m_hasFolded) activePlayers.push_back(p);
+    }
+    if (activePlayers.empty()) return;
+
+    std::vector<std::pair<Player*, HandRankResult>> ranks;
+    for (Player* p : activePlayers) {
+        std::vector<Card> allCards = p->getHand();
+        allCards.insert(allCards.end(), m_communityCards.begin(), m_communityCards.end());
+        HandRankResult res = getFullHandRank(allCards);
+        ranks.push_back({p, res});
+    }
+
+    std::sort(ranks.begin(), ranks.end(),
+        [](const std::pair<Player*, HandRankResult>& a,
+           const std::pair<Player*, HandRankResult>& b) {
+            if (a.second.rank != b.second.rank)
+                return a.second.rank > b.second.rank;
+            return a.second.kickers > b.second.kickers;
+        });
+
+    int bestRank = ranks[0].second.rank;
+    auto bestKickers = ranks[0].second.kickers;
+    std::vector<Player*> winners;
+    for (const auto& entry : ranks) {
+        if (entry.second.rank == bestRank && entry.second.kickers == bestKickers)
+            winners.push_back(entry.first);
+        else
+            break;
+    }
+
+    int share = m_pot / (int)winners.size();
+    for (Player* w : winners) {
+        w->winMoney(share);
+    }
+
+    m_winnerText = "Winner: ";
+    for (size_t i = 0; i < winners.size(); ++i) {
+        if (i > 0) m_winnerText += ", ";
+        m_winnerText += winners[i]->getName();
+    }
+    m_winnerText += " wins $" + std::to_string(share) + (winners.size() > 1 ? " each!" : "!");
+    m_pot = 0;
+}
 
 void LANPokerGame::render() {
     auto& r = Renderer::getInstance();
@@ -103,6 +306,7 @@ void LANPokerGame::render() {
         r.drawText(stageText, winW/2 - 40, 10, {255,200,100,255});
         r.drawText("POT: $" + std::to_string(m_lastState.pot), winW/2 - 50, 30, {255,215,0,255});
 
+        // Общие карты
         int ccX = winW/2 - m_lastState.communityCardCount * 40;
         for (int i = 0; i < m_lastState.communityCardCount; ++i) {
             Card card(static_cast<Suit>(m_lastState.communityCards[i][1]), static_cast<Rank>(m_lastState.communityCards[i][0]));
@@ -110,6 +314,7 @@ void LANPokerGame::render() {
             ccX += 80;
         }
 
+        // Игроки
         int count = m_lastState.playerCount;
         int centerX = winW/2;
         int centerY = winH/2;
@@ -137,26 +342,24 @@ void LANPokerGame::render() {
                 cardX += 50;
             }
         }
-        // Отладочный вывод
-        std::cout << "[CLIENT RENDER] m_waitingForAction=" << m_waitingForAction
-                  << " m_gameOver=" << m_gameOver
-                  << " currentPlayerId=" << m_lastState.currentPlayerId
-                  << " m_clientPlayerId=" << m_clientPlayerId << std::endl;
-        if (m_waitingForAction && !m_gameOver && m_lastState.currentPlayerId == m_clientPlayerId) {
+
+        // Кнопки для клиента
+        if (!m_gameOver) {
             int btnY = winH - 80;
-            int callAmount = m_lastState.currentBet - m_lastState.players[m_clientPlayerId].currentBet;
+            int callAmount = 0;
+            if (m_lastState.playerCount > m_clientPlayerId) {
+                callAmount = m_lastState.currentBet - m_lastState.players[m_clientPlayerId].currentBet;
+            }
             r.drawButton("Fold", winW/2 - 300, btnY, 80, 40);
             if (callAmount == 0) {
                 r.drawButton("Check", winW/2 - 200, btnY, 120, 40);
             } else {
                 r.drawButton("Call $" + std::to_string(callAmount), winW/2 - 200, btnY, 120, 40);
             }
-            if (m_lastState.players[m_clientPlayerId].money > callAmount) {
-                r.drawButton("Raise +20", winW/2 - 60, btnY, 90, 40);
-                r.drawButton("Raise +50", winW/2 + 40, btnY, 90, 40);
-                r.drawButton("Raise +100", winW/2 + 140, btnY, 100, 40);
-                r.drawButton("All-in", winW/2 + 250, btnY, 80, 40);
-            }
+            r.drawButton("Raise +20", winW/2 - 60, btnY, 90, 40);
+            r.drawButton("Raise +50", winW/2 + 40, btnY, 90, 40);
+            r.drawButton("Raise +100", winW/2 + 140, btnY, 100, 40);
+            r.drawButton("All-in", winW/2 + 250, btnY, 80, 40);
         } else if (m_gameOver) {
             if (strlen(m_lastState.winnerText) > 0) {
                 r.drawText(m_lastState.winnerText, winW/2 - 150, winH/2 - 80, {100,255,100,255});
@@ -168,7 +371,7 @@ void LANPokerGame::render() {
         return;
     }
 
-    // Серверная отрисовка (локальная) – без изменений, но для полноты приведу.
+    // Серверная отрисовка (аналогична одиночному покеру)
     std::string stageText;
     switch (m_stage) {
         case Stage::Preflop: stageText = "PRE-FLOP"; break;
@@ -374,27 +577,28 @@ int LANPokerGame::handleEvent(const SDL_Event& event) {
             }
         }
     } else {
-        if (m_waitingForAction && m_lastState.currentPlayerId == m_clientPlayerId && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !m_gameOver) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
             int btnY = winH - 80;
             auto& r = Renderer::getInstance();
-            int callAmount = m_lastState.currentBet - m_lastState.players[m_clientPlayerId].currentBet;
+            int callAmount = 0;
+            if (m_lastState.playerCount > m_clientPlayerId) {
+                callAmount = m_lastState.currentBet - m_lastState.players[m_clientPlayerId].currentBet;
+            }
             if (r.isButtonClicked(winW/2 - 300, btnY, 80, 40)) {
                 sendAction(PokerActionType::Fold);
             } else if (r.isButtonClicked(winW/2 - 200, btnY, 120, 40)) {
                 if (callAmount == 0) sendAction(PokerActionType::Check);
                 else sendAction(PokerActionType::Call);
-            } else if (m_lastState.players[m_clientPlayerId].money > callAmount) {
-                if (r.isButtonClicked(winW/2 - 60, btnY, 90, 40)) {
-                    sendAction(PokerActionType::Raise, callAmount + 20);
-                } else if (r.isButtonClicked(winW/2 + 40, btnY, 90, 40)) {
-                    sendAction(PokerActionType::Raise, callAmount + 50);
-                } else if (r.isButtonClicked(winW/2 + 140, btnY, 100, 40)) {
-                    sendAction(PokerActionType::Raise, callAmount + 100);
-                } else if (r.isButtonClicked(winW/2 + 250, btnY, 80, 40)) {
-                    sendAction(PokerActionType::AllIn);
-                }
+            } else if (r.isButtonClicked(winW/2 - 60, btnY, 90, 40)) {
+                sendAction(PokerActionType::Raise, callAmount + 20);
+            } else if (r.isButtonClicked(winW/2 + 40, btnY, 90, 40)) {
+                sendAction(PokerActionType::Raise, callAmount + 50);
+            } else if (r.isButtonClicked(winW/2 + 140, btnY, 100, 40)) {
+                sendAction(PokerActionType::Raise, callAmount + 100);
+            } else if (r.isButtonClicked(winW/2 + 250, btnY, 80, 40)) {
+                sendAction(PokerActionType::AllIn);
             }
         }
     }
@@ -408,6 +612,7 @@ void LANPokerGame::sendAction(PokerActionType action, uint32_t raiseAmount) {
     packet.action = action;
     packet.raiseAmount = raiseAmount;
     NetworkManager::getInstance().sendToServer(&packet, sizeof(packet));
+    std::cout << "[CLIENT] Sent action: " << (int)action << " raise=" << raiseAmount << std::endl;
 }
 
 void LANPokerGame::onPacketReceived(const void* data, int len) {
@@ -417,9 +622,9 @@ void LANPokerGame::onPacketReceived(const void* data, int len) {
         memcpy(&m_lastState, data, sizeof(PokerStatePacket));
         m_gameOver = m_lastState.gameOver;
         if (!m_isServer) {
-            m_waitingForAction = !m_gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
-            std::cout << "[CLIENT] Received state: currentPlayerId=" << m_lastState.currentPlayerId
-                      << " gameOver=" << m_gameOver << " myTurn=" << m_waitingForAction << std::endl;
+            std::cout << "[CLIENT] Received state: pot=" << m_lastState.pot << " currentBet=" << m_lastState.currentBet
+                      << " communityCount=" << (int)m_lastState.communityCardCount << " currentPlayerId=" << m_lastState.currentPlayerId
+                      << " gameOver=" << m_gameOver << std::endl;
         }
     } else if (type == PacketType::PokerAction && m_isServer && len >= sizeof(PokerActionPacket)) {
         PokerActionPacket action;
@@ -496,6 +701,7 @@ void LANPokerGame::sendFullStateToClient() {
     packet.currentBet = m_currentBet;
     packet.stage = static_cast<uint8_t>(m_stage);
     packet.communityCardCount = static_cast<uint8_t>(m_communityCards.size());
+    // Копируем общие карты
     for (size_t i = 0; i < m_communityCards.size(); ++i) {
         packet.communityCards[i][0] = static_cast<uint8_t>(m_communityCards[i].getRank());
         packet.communityCards[i][1] = static_cast<uint8_t>(m_communityCards[i].getSuit());
@@ -521,4 +727,6 @@ void LANPokerGame::sendFullStateToClient() {
     strncpy(packet.winnerText, m_winnerText.c_str(), 99);
     packet.winnerText[99] = '\0';
     NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
+    std::cout << "[SERVER] Sent state: currentPlayerId=" << m_currentPlayerIdx << " pot=" << m_pot
+              << " communityCount=" << (int)packet.communityCardCount << " gameOver=" << m_gameOver << std::endl;
 }
