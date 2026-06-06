@@ -27,7 +27,6 @@ int main(int argc, char* argv[]) {
         Menu::GameChoice choice = Menu::showMainMenu();
         if (choice == Menu::GameChoice::Quit) break;
 
-        // LAN Blackjack режим
         if (choice == Menu::GameChoice::LANBlackjackHost || choice == Menu::GameChoice::LANBlackjackJoin) {
             auto& net = NetworkManager::getInstance();
             auto& disc = NetworkDiscovery::getInstance();
@@ -35,29 +34,23 @@ int main(int argc, char* argv[]) {
             disc.init();
 
             if (choice == Menu::GameChoice::LANBlackjackHost) {
-                // ---- Сервер (Host) ----
-                uint16_t port = 12345;  // фиксированный игровой порт
+                uint16_t port = 12345;
                 if (!net.createServer(port)) {
                     net.quit();
                     disc.quit();
                     continue;
                 }
-                // Запускаем broadcast для обнаружения
-                disc.startBroadcasting(port, "BlackjackServer");
-                disc.startDiscovery(12346);  // слушаем порт для обратной связи (не обязательно)
-
-                // Создаём двух игроков: индекс 0 – Host, индекс 1 – Client
+                // Создаём двух игроков: индекс 0 – хост, индекс 1 – клиент
                 std::vector<Player*> players;
                 players.push_back(new HumanPlayer("Host", 1000));
                 players.push_back(new HumanPlayer("Client", 1000));
-
                 bool nextGame = false;
                 do {
                     LANBlackjackGame game(players, true);
                     game.run();
                     bool gameRunning = true;
                     int exitCode = 0;
-
+                    uint64_t lastStateSend = SDL_GetTicks();
                     while (gameRunning) {
                         SDL_Event event;
                         while (SDL_PollEvent(&event)) {
@@ -72,6 +65,12 @@ int main(int argc, char* argv[]) {
                                 gameRunning = false;
                             }
                         }
+                        // Периодически отправляем состояние клиентам
+                        uint64_t now = SDL_GetTicks();
+                        if (now - lastStateSend >= 500) {
+                            game.sendFullStateToClient();
+                            lastStateSend = now;
+                        }
                         net.update();
                         disc.update();
                         game.render();
@@ -85,46 +84,18 @@ int main(int argc, char* argv[]) {
                         continue;
                     }
                 } while (nextGame);
-
                 for (auto p : players) delete p;
-                disc.stopBroadcasting();
-            }
-            else { // LANBlackjackJoin
-                // ---- Клиент (Join) ----
-                disc.startDiscovery(12346);
-                std::cout << "Searching for servers (3 sec)..." << std::endl;
-                uint64_t discoveryEnd = SDL_GetTicks() + 3000;
-                while (SDL_GetTicks() < discoveryEnd) {
-                    disc.update();
-                    SDL_Delay(100);
-                }
-                auto servers = disc.getServers();
-                std::string chosenIP;
+            } else {
+                std::string chosenIP = Menu::inputText("Enter server IP:", "192.168.10.103", 400, 300);
                 uint16_t port = 12345;
-
-                if (!servers.empty()) {
-                    // Автоматически подключаемся к первому найденному серверу
-                    chosenIP = servers[0].ip;
-                    port = servers[0].port;   // игровой порт, полученный из broadcast-пакета
-                    std::cout << "Auto-connecting to " << chosenIP << ":" << port << std::endl;
-                } else {
-                    // Ручной ввод, если сервер не найден
-                    chosenIP = Menu::inputText("No servers found, enter IP manually:", "192.168.10.103", 400, 300);
-                    std::string portStr = Menu::inputText("Enter port (default 12345):", "12345", 400, 350);
-                    if (!portStr.empty()) port = (uint16_t)std::stoi(portStr);
-                }
-
                 if (!net.connectToServer(chosenIP.c_str(), port)) {
-                    disc.stopDiscovery();
                     net.quit();
                     disc.quit();
                     continue;
                 }
-
-                // Клиент не создаёт своих игроков – они придут от сервера
                 bool nextGame = false;
                 do {
-                    std::vector<Player*> players;  // пусто
+                    std::vector<Player*> players;
                     LANBlackjackGame game(players, false);
                     game.run();
                     bool gameRunning = true;
@@ -156,15 +127,13 @@ int main(int argc, char* argv[]) {
                         continue;
                     }
                 } while (nextGame);
-
-                disc.stopDiscovery();
             }
             disc.quit();
             net.quit();
             continue;
         }
 
-        // ---- Обычные режимы (Blackjack / Poker) ----
+        // Обычные режимы Blackjack / Poker
         Menu::PlayerSetup playersSetup = Menu::showPlayerSetupMenu();
         if (playersSetup.humans == 0 && playersSetup.bots == 0) continue;
 
