@@ -299,11 +299,11 @@ void LANPokerGame::render() {
         r.drawText(stageText, winW/2 - 40, 10, {255,200,100,255});
         r.drawText("POT: $" + std::to_string(m_lastState.pot), winW/2 - 50, 30, {255,215,0,255});
 
-        int ccX = winW/2 - m_lastState.communityCardCount * 40;
+        // Общие карты – рисуем в центре экрана
+        int ccX = winW/2 - (m_lastState.communityCardCount * 40);
         for (int i = 0; i < m_lastState.communityCardCount; ++i) {
             Card card(static_cast<Suit>(m_lastState.communityCards[i][1]), static_cast<Rank>(m_lastState.communityCards[i][0]));
-            r.drawCard(card, ccX, winH/2 - 50, 70, 105, false);
-            ccX += 80;
+            r.drawCard(card, ccX + i * 80, winH/2 - 50, 70, 105, false);
         }
 
         int count = m_lastState.playerCount;
