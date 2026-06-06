@@ -65,42 +65,81 @@ void PokerGame::startNewRound() {
 
     for (auto p : m_players) {
         p->clearHand();
-        p->m_hasFolded = false;
-        p->m_isAllIn = false;
-        p->m_hasActed = false;
+        if (p->getMoney() <= 0) {
+            p->m_hasFolded = true;
+            p->m_isAllIn = false;
+            p->m_hasActed = true;
+        } else {
+            p->m_hasFolded = false;
+            p->m_isAllIn = false;
+            p->m_hasActed = false;
+        }
         p->m_currentBet = 0;
     }
 
-    for (int i = 0; i < 2; ++i)
-        for (auto p : m_players)
-            if (p->getMoney() > 0)
+    // Раздача карт
+    for (int i = 0; i < 2; ++i) {
+        for (auto p : m_players) {
+            if (!p->m_hasFolded) {
                 p->addCard(m_deck.dealCard());
+            }
+        }
+    }
 
-    m_dealerButton = (m_dealerButton + 1) % m_players.size();
+    // Поиск дилера (первый не выбывший)
+    while (m_players[m_dealerButton]->m_hasFolded) {
+        m_dealerButton = (m_dealerButton + 1) % m_players.size();
+    }
+
     int sbIdx = (m_dealerButton + 1) % m_players.size();
     int bbIdx = (sbIdx + 1) % m_players.size();
 
+    while (m_players[sbIdx]->m_hasFolded) sbIdx = (sbIdx + 1) % m_players.size();
+    while (m_players[bbIdx]->m_hasFolded) bbIdx = (bbIdx + 1) % m_players.size();
+
+    // Сбор блайндов
     if (m_players[sbIdx]->getMoney() >= m_smallBlind) {
         m_players[sbIdx]->placeBet(m_smallBlind);
         m_pot += m_smallBlind;
         m_players[sbIdx]->m_currentBet = m_smallBlind;
+    } else {
+        m_players[sbIdx]->m_hasFolded = true;
     }
+
     if (m_players[bbIdx]->getMoney() >= m_bigBlind) {
         m_players[bbIdx]->placeBet(m_bigBlind);
         m_pot += m_bigBlind;
         m_players[bbIdx]->m_currentBet = m_bigBlind;
+    } else {
+        m_players[bbIdx]->m_hasFolded = true;
     }
 
     m_currentBet = m_bigBlind;
     m_currentPlayerIdx = (bbIdx + 1) % m_players.size();
+    while (m_players[m_currentPlayerIdx]->m_hasFolded) {
+        m_currentPlayerIdx = (m_currentPlayerIdx + 1) % m_players.size();
+    }
+
     m_playersInHand = 0;
     for (auto p : m_players) if (!p->m_hasFolded) m_playersInHand++;
     m_waitingForAction = true;
     m_lastRaiserIdx = bbIdx;
+
+    // Если остался один активный
+    if (m_playersInHand <= 1) {
+        for (auto p : m_players) {
+            if (!p->m_hasFolded) {
+                p->winMoney(m_pot);
+                m_winnerText = p->getName() + " wins the pot (everyone else folded)!";
+                m_gameOver = true;
+                return;
+            }
+        }
+    }
 }
 
 void PokerGame::advanceStage() {
-
+    // Проверка, остался ли только один активный игрок
     int activeCount = 0;
     Player* lastPlayer = nullptr;
     for (auto p : m_players) {
@@ -113,7 +152,7 @@ void PokerGame::advanceStage() {
         lastPlayer->winMoney(m_pot);
         m_pot = 0;
         m_gameOver = true;
-        m_winnerText = lastPlayer->getName() + " wins the pot (everyone folded)!";
+        m_winnerText = lastPlayer->getName() + " wins the pot (everyone else folded)!";
         return;
     }
 
@@ -139,22 +178,15 @@ void PokerGame::advanceStage() {
             return;
         default: break;
     }
-
-
     m_currentBet = 0;
     m_lastRaiserIdx = -1;
-
     for (auto p : m_players) {
-        if (!p->m_hasFolded && !p->m_isAllIn) {
-            p->m_hasActed = false;
-        }
+        if (!p->m_hasFolded && !p->m_isAllIn) p->m_hasActed = false;
         p->m_currentBet = 0;
     }
-
     m_currentPlayerIdx = (m_dealerButton + 1) % m_players.size();
-    while (m_players[m_currentPlayerIdx]->m_hasFolded) {
+    while (m_players[m_currentPlayerIdx]->m_hasFolded)
         m_currentPlayerIdx = (m_currentPlayerIdx + 1) % m_players.size();
-    }
     m_waitingForAction = true;
 }
 
@@ -170,28 +202,23 @@ void PokerGame::nextPlayer() {
 }
 
 bool PokerGame::isRoundComplete() {
-    int active = 0;
-    int acted = 0;
+    int active = 0, acted = 0;
     for (auto p : m_players) {
         if (!p->m_hasFolded) {
             active++;
             if (p->m_hasActed || p->m_isAllIn) acted++;
         }
     }
-
-    if (active == 0) return true;
-
-
-    int targetBet = -1;
     bool allBetsEqual = true;
+    int betAmount = -1;
     for (auto p : m_players) {
         if (!p->m_hasFolded && !p->m_isAllIn) {
-            if (targetBet == -1) targetBet = p->m_currentBet;
-            else if (p->m_currentBet != targetBet) allBetsEqual = false;
+            if (betAmount == -1) betAmount = p->m_currentBet;
+            else if (p->m_currentBet != betAmount) allBetsEqual = false;
         }
     }
-
-    return (acted == active) && allBetsEqual;
+    // Раунд завершён, когда все активные игроки сделали действие (или all-in) И ставки равны
+    return (acted >= active && allBetsEqual) && active > 0;
 }
 
 void PokerGame::evaluateAndPayWinners() {
@@ -238,7 +265,6 @@ void PokerGame::evaluateAndPayWinners() {
         m_winnerText += winners[i]->getName();
     }
     m_winnerText += " wins $" + std::to_string(share) + (winners.size() > 1 ? " each!" : "!");
-
     m_pot = 0;
 }
 
@@ -250,7 +276,6 @@ void PokerGame::render() {
     int winW, winH;
     r.getWindowSize(winW, winH);
 
-
     std::string stageText;
     switch (m_stage) {
         case Stage::Preflop: stageText = "PRE-FLOP"; break;
@@ -259,9 +284,9 @@ void PokerGame::render() {
         case Stage::River: stageText = "RIVER"; break;
         case Stage::Showdown: stageText = "SHOWDOWN"; break;
     }
-    r.drawText(stageText, winW/2 - 40, 50, {255, 200, 100, 255});
+    r.drawText(stageText, winW/2 - 40, 10, {255, 200, 100, 255});
 
-    r.drawText("POT: $" + std::to_string(m_pot), winW/2 - 50, 75, {255,215,0,255});
+    r.drawText("POT: $" + std::to_string(m_pot), winW/2 - 50, 30, {255,215,0,255});
 
     int ccX = winW/2 - (int)m_communityCards.size() * 40;
     for (size_t i = 0; i < m_communityCards.size(); ++i) {
@@ -280,9 +305,12 @@ void PokerGame::render() {
         int x = centerX + (int)(radiusX * cos(angle)) - 50;
         int y = centerY + (int)(radiusY * sin(angle)) - 50;
 
-        SDL_Color nameColor = (i == m_currentPlayerIdx && m_waitingForAction && !m_gameOver) ? SDL_Color{0,255,0,255} : SDL_Color{255,255,255,255};
+        bool isFolded = m_players[i]->m_hasFolded || m_players[i]->getMoney() <= 0;
+        SDL_Color nameColor = (i == m_currentPlayerIdx && m_waitingForAction && !m_gameOver && !isFolded) ?
+                              SDL_Color{0,255,0,255} : SDL_Color{255,255,255,255};
         std::string status = "";
         if (m_players[i]->m_hasFolded) status = " (Folded)";
+        else if (m_players[i]->getMoney() <= 0) status = " (Broke)";
         else if (m_players[i]->m_isAllIn) status = " (All-In)";
 
         r.drawText(m_players[i]->getName() + " ($" + std::to_string(m_players[i]->getMoney()) + ")" + status, x, y - 25, nameColor);
@@ -290,6 +318,7 @@ void PokerGame::render() {
 
         bool showCards = (m_stage == Stage::Showdown) || (i == m_currentPlayerIdx && m_waitingForAction && !m_gameOver);
         if (m_players[i]->isBot() && m_stage != Stage::Showdown) showCards = false;
+        if (isFolded) showCards = false;
 
         int cardX = x;
         for (const auto& card : m_players[i]->getHand()) {
@@ -300,7 +329,11 @@ void PokerGame::render() {
 
     if (m_waitingForAction && !m_gameOver) {
         Player* current = m_players[m_currentPlayerIdx];
-        if (current->isBot()) {
+        if (current->m_hasFolded || current->getMoney() <= 0) {
+            // Пропустить ход (автоматически)
+            current->m_hasActed = true;
+            nextPlayer();
+        } else if (current->isBot()) {
             SDL_Delay(400);
             int callAmount = m_currentBet - current->m_currentBet;
             if (callAmount == 0) {
@@ -319,31 +352,33 @@ void PokerGame::render() {
             int btnY = winH - 80;
             int callAmount = m_currentBet - current->m_currentBet;
 
-            r.drawButton("Fold", winW/2 - 300, btnY, 80, 40);
-            r.drawButton(callAmount == 0 ? "Check" : "Call $" + std::to_string(callAmount), winW/2 - 200, btnY, 120, 40);
-
-            if (current->getMoney() > callAmount) {
-                int raise20 = callAmount + 20;
-                int raise50 = callAmount + 50;
-                int raise100 = callAmount + 100;
-                if (raise20 <= current->getMoney() + current->m_currentBet)
-                    r.drawButton("Raise +20", winW/2 - 60, btnY, 90, 40);
-                if (raise50 <= current->getMoney() + current->m_currentBet)
-                    r.drawButton("Raise +50", winW/2 + 40, btnY, 90, 40);
-                if (raise100 <= current->getMoney() + current->m_currentBet)
-                    r.drawButton("Raise +100", winW/2 + 140, btnY, 100, 40);
-                r.drawButton("All-in", winW/2 + 250, btnY, 80, 40);
+            if (callAmount > current->getMoney()) {
+                r.drawButton("Fold (Can't call)", winW/2 - 200, btnY, 200, 40);
+            } else {
+                r.drawButton("Fold", winW/2 - 300, btnY, 80, 40);
+                r.drawButton(callAmount == 0 ? "Check" : "Call $" + std::to_string(callAmount), winW/2 - 200, btnY, 120, 40);
+                if (current->getMoney() > callAmount) {
+                    int raise20 = callAmount + 20;
+                    int raise50 = callAmount + 50;
+                    int raise100 = callAmount + 100;
+                    if (raise20 <= current->getMoney() + current->m_currentBet)
+                        r.drawButton("Raise +20", winW/2 - 60, btnY, 90, 40);
+                    if (raise50 <= current->getMoney() + current->m_currentBet)
+                        r.drawButton("Raise +50", winW/2 + 40, btnY, 90, 40);
+                    if (raise100 <= current->getMoney() + current->m_currentBet)
+                        r.drawButton("Raise +100", winW/2 + 140, btnY, 100, 40);
+                    r.drawButton("All-in", winW/2 + 250, btnY, 80, 40);
+                }
             }
         }
     } else if (m_gameOver) {
-
+        // Выводим победителя выше, над картами (y = winH/2 - 80)
         if (!m_winnerText.empty()) {
-            r.drawText(m_winnerText, winW/2 - 150, winH/2 + 80, {100, 255, 100, 255});
+            r.drawText(m_winnerText, winW/2 - 150, winH/2 - 80, {100, 255, 100, 255});
         }
-        r.drawButton("Main Menu", winW/2 - 160, winH/2 + 140, 140, 40);
-        r.drawButton("Next Game", winW/2 + 20, winH/2 + 140, 140, 40);
+        r.drawButton("Main Menu", winW/2 - 160, winH/2 + 100, 140, 40);
+        r.drawButton("Next Game", winW/2 + 20, winH/2 + 100, 140, 40);
     }
-
     r.present();
 }
 
@@ -353,14 +388,19 @@ int PokerGame::handleEvent(const SDL_Event& event) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
             auto& r = Renderer::getInstance();
-            if (r.isButtonClicked(winW/2 - 160, winH/2 + 140, 140, 40)) return 1;
-            if (r.isButtonClicked(winW/2 + 20, winH/2 + 140, 140, 40)) return 2;
+            if (r.isButtonClicked(winW/2 - 160, winH/2 + 100, 140, 40)) return 1;
+            if (r.isButtonClicked(winW/2 + 20, winH/2 + 100, 140, 40)) return 2;
         }
         return 0;
     }
 
     if (m_waitingForAction) {
         Player* current = m_players[m_currentPlayerIdx];
+        if (current->m_hasFolded || current->getMoney() <= 0) {
+            current->m_hasActed = true;
+            nextPlayer();
+            return 0;
+        }
         if (!current->isBot() && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             int winW, winH;
             Renderer::getInstance().getWindowSize(winW, winH);
@@ -368,74 +408,82 @@ int PokerGame::handleEvent(const SDL_Event& event) {
             auto& r = Renderer::getInstance();
             int callAmount = m_currentBet - current->m_currentBet;
 
-            if (r.isButtonClicked(winW/2 - 300, btnY, 80, 40)) {
-                current->m_hasFolded = true;
-                nextPlayer();
-            } else if (r.isButtonClicked(winW/2 - 200, btnY, 120, 40)) {
-                int toCall = std::min(callAmount, current->getMoney());
-                if (toCall > 0) {
-                    current->placeBet(toCall);
-                    m_pot += toCall;
+            if (callAmount > current->getMoney()) {
+                if (r.isButtonClicked(winW/2 - 200, btnY, 200, 40)) {
+                    current->m_hasFolded = true;
+                    nextPlayer();
                 }
-                if (current->getMoney() == 0) current->m_isAllIn = true;
-                current->m_hasActed = true;
-                nextPlayer();
-            } else if (current->getMoney() > callAmount) {
-                int raise20 = callAmount + 20;
-                int raise50 = callAmount + 50;
-                int raise100 = callAmount + 100;
-                if (r.isButtonClicked(winW/2 - 60, btnY, 90, 40) && raise20 <= current->getMoney() + current->m_currentBet) {
-                    int totalNeeded = raise20;
-                    current->placeBet(totalNeeded);
-                    m_pot += totalNeeded;
-                    m_currentBet = current->m_currentBet;
-                    m_lastRaiserIdx = m_currentPlayerIdx;
-                    for (auto p : m_players) {
-                        if (p != current && !p->m_hasFolded && !p->m_isAllIn)
-                            p->m_hasActed = false;
+            } else {
+                if (r.isButtonClicked(winW/2 - 300, btnY, 80, 40)) {
+                    current->m_hasFolded = true;
+                    nextPlayer();
+                } else if (r.isButtonClicked(winW/2 - 200, btnY, 120, 40)) {
+                    // CALL или CHECK
+                    int toCall = std::min(callAmount, current->getMoney());
+                    if (toCall > 0) {
+                        current->placeBet(toCall);
+                        m_pot += toCall;
                     }
                     if (current->getMoney() == 0) current->m_isAllIn = true;
                     current->m_hasActed = true;
                     nextPlayer();
-                } else if (r.isButtonClicked(winW/2 + 40, btnY, 90, 40) && raise50 <= current->getMoney() + current->m_currentBet) {
-                    int totalNeeded = raise50;
-                    current->placeBet(totalNeeded);
-                    m_pot += totalNeeded;
-                    m_currentBet = current->m_currentBet;
-                    m_lastRaiserIdx = m_currentPlayerIdx;
-                    for (auto p : m_players) {
-                        if (p != current && !p->m_hasFolded && !p->m_isAllIn)
-                            p->m_hasActed = false;
+                } else if (current->getMoney() > callAmount) {
+                    int raise20 = callAmount + 20;
+                    int raise50 = callAmount + 50;
+                    int raise100 = callAmount + 100;
+                    if (r.isButtonClicked(winW/2 - 60, btnY, 90, 40) && raise20 <= current->getMoney() + current->m_currentBet) {
+                        int totalNeeded = raise20;
+                        current->placeBet(totalNeeded);
+                        m_pot += totalNeeded;
+                        m_currentBet = current->m_currentBet;
+                        m_lastRaiserIdx = m_currentPlayerIdx;
+                        for (auto p : m_players) {
+                            if (p != current && !p->m_hasFolded && !p->m_isAllIn)
+                                p->m_hasActed = false;
+                        }
+                        if (current->getMoney() == 0) current->m_isAllIn = true;
+                        current->m_hasActed = true;
+                        nextPlayer();
+                    } else if (r.isButtonClicked(winW/2 + 40, btnY, 90, 40) && raise50 <= current->getMoney() + current->m_currentBet) {
+                        int totalNeeded = raise50;
+                        current->placeBet(totalNeeded);
+                        m_pot += totalNeeded;
+                        m_currentBet = current->m_currentBet;
+                        m_lastRaiserIdx = m_currentPlayerIdx;
+                        for (auto p : m_players) {
+                            if (p != current && !p->m_hasFolded && !p->m_isAllIn)
+                                p->m_hasActed = false;
+                        }
+                        if (current->getMoney() == 0) current->m_isAllIn = true;
+                        current->m_hasActed = true;
+                        nextPlayer();
+                    } else if (r.isButtonClicked(winW/2 + 140, btnY, 100, 40) && raise100 <= current->getMoney() + current->m_currentBet) {
+                        int totalNeeded = raise100;
+                        current->placeBet(totalNeeded);
+                        m_pot += totalNeeded;
+                        m_currentBet = current->m_currentBet;
+                        m_lastRaiserIdx = m_currentPlayerIdx;
+                        for (auto p : m_players) {
+                            if (p != current && !p->m_hasFolded && !p->m_isAllIn)
+                                p->m_hasActed = false;
+                        }
+                        if (current->getMoney() == 0) current->m_isAllIn = true;
+                        current->m_hasActed = true;
+                        nextPlayer();
+                    } else if (r.isButtonClicked(winW/2 + 250, btnY, 80, 40)) {
+                        int totalNeeded = current->getMoney() + current->m_currentBet;
+                        current->placeBet(totalNeeded);
+                        m_pot += totalNeeded;
+                        m_currentBet = current->m_currentBet;
+                        m_lastRaiserIdx = m_currentPlayerIdx;
+                        for (auto p : m_players) {
+                            if (p != current && !p->m_hasFolded && !p->m_isAllIn)
+                                p->m_hasActed = false;
+                        }
+                        current->m_isAllIn = true;
+                        current->m_hasActed = true;
+                        nextPlayer();
                     }
-                    if (current->getMoney() == 0) current->m_isAllIn = true;
-                    current->m_hasActed = true;
-                    nextPlayer();
-                } else if (r.isButtonClicked(winW/2 + 140, btnY, 100, 40) && raise100 <= current->getMoney() + current->m_currentBet) {
-                    int totalNeeded = raise100;
-                    current->placeBet(totalNeeded);
-                    m_pot += totalNeeded;
-                    m_currentBet = current->m_currentBet;
-                    m_lastRaiserIdx = m_currentPlayerIdx;
-                    for (auto p : m_players) {
-                        if (p != current && !p->m_hasFolded && !p->m_isAllIn)
-                            p->m_hasActed = false;
-                    }
-                    if (current->getMoney() == 0) current->m_isAllIn = true;
-                    current->m_hasActed = true;
-                    nextPlayer();
-                } else if (r.isButtonClicked(winW/2 + 250, btnY, 80, 40)) {
-                    int totalNeeded = current->getMoney() + current->m_currentBet;
-                    current->placeBet(totalNeeded);
-                    m_pot += totalNeeded;
-                    m_currentBet = current->m_currentBet;
-                    m_lastRaiserIdx = m_currentPlayerIdx;
-                    for (auto p : m_players) {
-                        if (p != current && !p->m_hasFolded && !p->m_isAllIn)
-                            p->m_hasActed = false;
-                    }
-                    current->m_isAllIn = true;
-                    current->m_hasActed = true;
-                    nextPlayer();
                 }
             }
         }
