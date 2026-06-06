@@ -53,7 +53,6 @@ LANPokerGame::LANPokerGame(const std::vector<Player*>& players, bool isServer)
     if (!m_isServer) {
         m_players.clear();
     }
-    std::cout << "[POKER] Constructor: isServer=" << isServer << ", players.size=" << players.size() << std::endl;
 }
 
 LANPokerGame::~LANPokerGame() {}
@@ -74,11 +73,6 @@ void LANPokerGame::run() {
 }
 
 void LANPokerGame::startNewRound() {
-    std::cout << "[SERVER] startNewRound: players=" << m_players.size() << std::endl;
-    for (auto p : m_players) {
-        std::cout << "  " << p->getName() << " money=" << p->getMoney() << std::endl;
-    }
-
     m_gameOver = false;
     m_deck.reset();
     m_stage = Stage::Preflop;
@@ -154,7 +148,6 @@ void LANPokerGame::startNewRound() {
         }
     }
     sendFullStateToClient();
-    std::cout << "[SERVER] startNewRound done, m_waitingForAction=" << m_waitingForAction << ", currentPlayer=" << m_currentPlayerIdx << std::endl;
 }
 
 void LANPokerGame::advanceStage() {
@@ -306,7 +299,6 @@ void LANPokerGame::render() {
         r.drawText(stageText, winW/2 - 40, 10, {255,200,100,255});
         r.drawText("POT: $" + std::to_string(m_lastState.pot), winW/2 - 50, 30, {255,215,0,255});
 
-        // Общие карты
         int ccX = winW/2 - m_lastState.communityCardCount * 40;
         for (int i = 0; i < m_lastState.communityCardCount; ++i) {
             Card card(static_cast<Suit>(m_lastState.communityCards[i][1]), static_cast<Rank>(m_lastState.communityCards[i][0]));
@@ -314,7 +306,6 @@ void LANPokerGame::render() {
             ccX += 80;
         }
 
-        // Игроки
         int count = m_lastState.playerCount;
         int centerX = winW/2;
         int centerY = winH/2;
@@ -343,7 +334,6 @@ void LANPokerGame::render() {
             }
         }
 
-        // Кнопки для клиента
         if (!m_gameOver) {
             int btnY = winH - 80;
             int callAmount = 0;
@@ -371,7 +361,7 @@ void LANPokerGame::render() {
         return;
     }
 
-    // Серверная отрисовка (аналогична одиночному покеру)
+    // Сервер
     std::string stageText;
     switch (m_stage) {
         case Stage::Preflop: stageText = "PRE-FLOP"; break;
@@ -612,7 +602,6 @@ void LANPokerGame::sendAction(PokerActionType action, uint32_t raiseAmount) {
     packet.action = action;
     packet.raiseAmount = raiseAmount;
     NetworkManager::getInstance().sendToServer(&packet, sizeof(packet));
-    std::cout << "[CLIENT] Sent action: " << (int)action << " raise=" << raiseAmount << std::endl;
 }
 
 void LANPokerGame::onPacketReceived(const void* data, int len) {
@@ -622,9 +611,7 @@ void LANPokerGame::onPacketReceived(const void* data, int len) {
         memcpy(&m_lastState, data, sizeof(PokerStatePacket));
         m_gameOver = m_lastState.gameOver;
         if (!m_isServer) {
-            std::cout << "[CLIENT] Received state: pot=" << m_lastState.pot << " currentBet=" << m_lastState.currentBet
-                      << " communityCount=" << (int)m_lastState.communityCardCount << " currentPlayerId=" << m_lastState.currentPlayerId
-                      << " gameOver=" << m_gameOver << std::endl;
+            m_waitingForAction = !m_gameOver && (m_lastState.currentPlayerId == m_clientPlayerId);
         }
     } else if (type == PacketType::PokerAction && m_isServer && len >= sizeof(PokerActionPacket)) {
         PokerActionPacket action;
@@ -701,7 +688,6 @@ void LANPokerGame::sendFullStateToClient() {
     packet.currentBet = m_currentBet;
     packet.stage = static_cast<uint8_t>(m_stage);
     packet.communityCardCount = static_cast<uint8_t>(m_communityCards.size());
-    // Копируем общие карты
     for (size_t i = 0; i < m_communityCards.size(); ++i) {
         packet.communityCards[i][0] = static_cast<uint8_t>(m_communityCards[i].getRank());
         packet.communityCards[i][1] = static_cast<uint8_t>(m_communityCards[i].getSuit());
@@ -727,6 +713,4 @@ void LANPokerGame::sendFullStateToClient() {
     strncpy(packet.winnerText, m_winnerText.c_str(), 99);
     packet.winnerText[99] = '\0';
     NetworkManager::getInstance().sendToClient(&packet, sizeof(packet));
-    std::cout << "[SERVER] Sent state: currentPlayerId=" << m_currentPlayerIdx << " pot=" << m_pot
-              << " communityCount=" << (int)packet.communityCardCount << " gameOver=" << m_gameOver << std::endl;
 }
