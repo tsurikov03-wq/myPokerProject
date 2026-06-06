@@ -5,6 +5,7 @@
 #include "BlackjackGame.h"
 #include "PokerGame.h"
 #include "LANBlackjackGame.h"
+#include "LANPokerGame.h"          // добавлено для LAN покера
 #include "NetworkManager.h"
 #include "NetworkDiscovery.h"
 #include <iostream>
@@ -27,6 +28,7 @@ int main(int argc, char* argv[]) {
         Menu::GameChoice choice = Menu::showMainMenu();
         if (choice == Menu::GameChoice::Quit) break;
 
+        // ---------- LAN Blackjack ----------
         if (choice == Menu::GameChoice::LANBlackjackHost || choice == Menu::GameChoice::LANBlackjackJoin) {
             auto& net = NetworkManager::getInstance();
             auto& disc = NetworkDiscovery::getInstance();
@@ -40,7 +42,6 @@ int main(int argc, char* argv[]) {
                     disc.quit();
                     continue;
                 }
-                // Создаём двух игроков: индекс 0 – хост, индекс 1 – клиент
                 std::vector<Player*> players;
                 players.push_back(new HumanPlayer("Host", 1000));
                 players.push_back(new HumanPlayer("Client", 1000));
@@ -65,7 +66,6 @@ int main(int argc, char* argv[]) {
                                 gameRunning = false;
                             }
                         }
-                        // Периодически отправляем состояние клиентам
                         uint64_t now = SDL_GetTicks();
                         if (now - lastStateSend >= 500) {
                             game.sendFullStateToClient();
@@ -133,7 +133,112 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // Обычные режимы Blackjack / Poker
+        // ---------- LAN Poker ----------
+        if (choice == Menu::GameChoice::LANPokerHost || choice == Menu::GameChoice::LANPokerJoin) {
+            auto& net = NetworkManager::getInstance();
+            auto& disc = NetworkDiscovery::getInstance();
+            if (!net.init()) continue;
+            disc.init();
+
+            if (choice == Menu::GameChoice::LANPokerHost) {
+                uint16_t port = 12347;   // отдельный порт для покера
+                if (!net.createServer(port)) {
+                    net.quit();
+                    disc.quit();
+                    continue;
+                }
+                std::vector<Player*> players;
+                players.push_back(new HumanPlayer("Host", 1000));
+                players.push_back(new HumanPlayer("Client", 1000));
+                bool nextGame = false;
+                do {
+                    LANPokerGame game(players, true);
+                    game.run();
+                    bool gameRunning = true;
+                    int exitCode = 0;
+                    uint64_t lastStateSend = SDL_GetTicks();
+                    while (gameRunning) {
+                        SDL_Event event;
+                        while (SDL_PollEvent(&event)) {
+                            if (event.type == SDL_EVENT_QUIT) {
+                                gameRunning = false;
+                                quit = true;
+                                exitCode = 1;
+                            }
+                            int code = game.handleEvent(event);
+                            if (code > 0 && game.isGameOver()) {
+                                exitCode = code;
+                                gameRunning = false;
+                            }
+                        }
+                        uint64_t now = SDL_GetTicks();
+                        if (now - lastStateSend >= 500) {
+                            game.sendFullStateToClient();
+                            lastStateSend = now;
+                        }
+                        net.update();
+                        disc.update();
+                        game.render();
+                        SDL_Delay(16);
+                    }
+                    if (exitCode == 1 || quit) {
+                        nextGame = false;
+                        break;
+                    } else if (exitCode == 2) {
+                        nextGame = true;
+                        continue;
+                    }
+                } while (nextGame);
+                for (auto p : players) delete p;
+            } else {
+                std::string chosenIP = Menu::inputText("Enter server IP:", "192.168.10.103", 400, 300);
+                uint16_t port = 12347;
+                if (!net.connectToServer(chosenIP.c_str(), port)) {
+                    net.quit();
+                    disc.quit();
+                    continue;
+                }
+                bool nextGame = false;
+                do {
+                    std::vector<Player*> players;
+                    LANPokerGame game(players, false);
+                    game.run();
+                    bool gameRunning = true;
+                    int exitCode = 0;
+                    while (gameRunning) {
+                        SDL_Event event;
+                        while (SDL_PollEvent(&event)) {
+                            if (event.type == SDL_EVENT_QUIT) {
+                                gameRunning = false;
+                                quit = true;
+                                exitCode = 1;
+                            }
+                            int code = game.handleEvent(event);
+                            if (code > 0 && game.isGameOver()) {
+                                exitCode = code;
+                                gameRunning = false;
+                            }
+                        }
+                        net.update();
+                        disc.update();
+                        game.render();
+                        SDL_Delay(16);
+                    }
+                    if (exitCode == 1 || quit) {
+                        nextGame = false;
+                        break;
+                    } else if (exitCode == 2) {
+                        nextGame = true;
+                        continue;
+                    }
+                } while (nextGame);
+            }
+            disc.quit();
+            net.quit();
+            continue;
+        }
+
+        // ---------- Обычные режимы Blackjack / Poker ----------
         Menu::PlayerSetup playersSetup = Menu::showPlayerSetupMenu();
         if (playersSetup.humans == 0 && playersSetup.bots == 0) continue;
 

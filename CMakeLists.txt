@@ -20,7 +20,9 @@ file(GLOB SOURCES
 )
 file(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
 
-add_executable(MyPokerProject ${SOURCES} ${HEADERS})
+add_executable(MyPokerProject ${SOURCES} ${HEADERS}
+        include/LANPokerGame.h
+        src/LANPokerGame.cpp)
 
 target_include_directories(MyPokerProject PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"

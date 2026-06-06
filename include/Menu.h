@@ -7,7 +7,16 @@
 
 class Menu {
 public:
-    enum class GameChoice { Blackjack, Poker, LANBlackjackHost, LANBlackjackJoin, Quit, None };
+    enum class GameChoice {
+        Blackjack,
+        Poker,
+        LANBlackjackHost,
+        LANBlackjackJoin,
+        LANPokerHost,      // добавлено
+        LANPokerJoin,      // добавлено
+        Quit,
+        None
+    };
 
     struct Resolution { int width, height; };
     static Resolution showResolutionMenu();

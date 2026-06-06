@@ -61,11 +61,16 @@ Menu::GameChoice Menu::showMainMenu() {
     while (waiting) {
         r.clear();
         r.drawText("CASINO SUITE", w / 2 - 100, h / 2 - 200, { 255, 215, 0, 255 });
-        r.drawButton("Blackjack", w / 2 - 100, h / 2 - 80, 200, 50);
-        r.drawButton("Texas Hold'em Poker", w / 2 - 100, h / 2, 200, 50);
-        r.drawButton("LAN Blackjack (Host)", w / 2 - 100, h / 2 + 80, 200, 50);
-        r.drawButton("LAN Blackjack (Join)", w / 2 - 100, h / 2 + 140, 200, 50);
-        r.drawButton("Quit", w / 2 - 100, h / 2 + 200, 200, 50);
+
+        int yStart = h / 2 - 80;
+        r.drawButton("Blackjack", w / 2 - 100, yStart, 200, 50);
+        r.drawButton("Texas Hold'em Poker", w / 2 - 100, yStart + 60, 200, 50);
+        r.drawButton("LAN Blackjack (Host)", w / 2 - 100, yStart + 120, 200, 50);
+        r.drawButton("LAN Blackjack (Join)", w / 2 - 100, yStart + 180, 200, 50);
+        r.drawButton("LAN Poker (Host)", w / 2 - 100, yStart + 240, 200, 50);   // новая кнопка
+        r.drawButton("LAN Poker (Join)", w / 2 - 100, yStart + 300, 200, 50);   // новая кнопка
+        r.drawButton("Quit", w / 2 - 100, yStart + 360, 200, 50);               // сдвинута ниже
+
         r.present();
 
         SDL_Event event;
@@ -73,11 +78,20 @@ Menu::GameChoice Menu::showMainMenu() {
             if (event.type == SDL_EVENT_QUIT) return GameChoice::Quit;
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 int xm = (int)event.button.x, ym = (int)event.button.y;
-                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 - 80, 200, 50)) return GameChoice::Blackjack;
-                if (isPointInRect(xm, ym, w / 2 - 100, h / 2, 200, 50)) return GameChoice::Poker;
-                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 80, 200, 50)) return GameChoice::LANBlackjackHost;
-                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 140, 200, 50)) return GameChoice::LANBlackjackJoin;
-                if (isPointInRect(xm, ym, w / 2 - 100, h / 2 + 200, 200, 50)) return GameChoice::Quit;
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart, 200, 50))
+                    return GameChoice::Blackjack;
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart + 60, 200, 50))
+                    return GameChoice::Poker;
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart + 120, 200, 50))
+                    return GameChoice::LANBlackjackHost;
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart + 180, 200, 50))
+                    return GameChoice::LANBlackjackJoin;
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart + 240, 200, 50))
+                    return GameChoice::LANPokerHost;      // обработка новой кнопки
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart + 300, 200, 50))
+                    return GameChoice::LANPokerJoin;      // обработка новой кнопки
+                if (isPointInRect(xm, ym, w / 2 - 100, yStart + 360, 200, 50))
+                    return GameChoice::Quit;
             }
         }
         SDL_Delay(16);

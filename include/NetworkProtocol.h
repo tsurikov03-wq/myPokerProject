@@ -10,13 +10,21 @@ enum class PacketType : uint8_t {
     PlayerAction = 4,
     GameState = 5,
     GameOver = 6,
+    PokerAction = 10,
+    PokerState = 11,
 };
 
 enum class BlackjackAction : uint8_t {
     Hit, Stand, Double
 };
 
+enum class PokerActionType : uint8_t {
+    Fold, Check, Call, Raise, AllIn
+};
+
 #pragma pack(push, 1)
+
+// Blackjack structures
 struct PlayerActionPacket {
     PacketType type;
     uint32_t playerId;
@@ -34,8 +42,8 @@ struct PlayerNetState {
     bool bust;
     bool done;
     bool isBot;
-    char result[20];          // строка результата
-    uint8_t resultColorR;     // цвет результата (красный/зелёный/жёлтый)
+    char result[20];
+    uint8_t resultColorR;
     uint8_t resultColorG;
     uint8_t resultColorB;
 };
@@ -50,6 +58,42 @@ struct GameStatePacket {
     PlayerNetState players[6];
     bool gameOver;
 };
+
+// Poker structures
+struct PokerActionPacket {
+    PacketType type;          // = PokerAction
+    uint32_t playerId;
+    PokerActionType action;
+    uint32_t raiseAmount;     // для Raise
+};
+
+struct PlayerPokerState {
+    uint32_t playerId;
+    char name[20];
+    int32_t money;
+    int32_t currentBet;
+    uint8_t cardCount;
+    uint8_t cards[2][2];      // две карты
+    bool isFolded;
+    bool isAllIn;
+    bool hasActed;
+    bool isBot;
+};
+
+struct PokerStatePacket {
+    PacketType type;          // = PokerState
+    uint32_t currentPlayerId;
+    uint32_t pot;
+    uint32_t currentBet;       // текущая ставка для уравнивания
+    uint8_t stage;             // 0=preflop,1=flop,2=turn,3=river,4=showdown
+    uint8_t communityCardCount;
+    uint8_t communityCards[5][2];  // до 5 общих карт
+    uint8_t playerCount;
+    PlayerPokerState players[6];
+    bool gameOver;
+    char winnerText[100];
+};
+
 #pragma pack(pop)
 
 #endif
