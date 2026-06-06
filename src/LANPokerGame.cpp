@@ -299,7 +299,6 @@ void LANPokerGame::render() {
         r.drawText(stageText, winW/2 - 40, 10, {255,200,100,255});
         r.drawText("POT: $" + std::to_string(m_lastState.pot), winW/2 - 50, 30, {255,215,0,255});
 
-        // Общие карты – рисуем в центре экрана
         int ccX = winW/2 - (m_lastState.communityCardCount * 40);
         for (int i = 0; i < m_lastState.communityCardCount; ++i) {
             Card card(static_cast<Suit>(m_lastState.communityCards[i][1]), static_cast<Rank>(m_lastState.communityCards[i][0]));
@@ -397,7 +396,8 @@ void LANPokerGame::render() {
         else if (m_players[i]->m_isAllIn) status = " (All-In)";
         r.drawText(m_players[i]->getName() + " ($" + std::to_string(m_players[i]->getMoney()) + ")" + status, x, y - 25, nameColor);
         r.drawText("Bet: $" + std::to_string(m_players[i]->m_currentBet), x, y - 5, {255,255,0,255});
-        bool showCards = (m_stage == Stage::Showdown) || (i == m_currentPlayerIdx && m_waitingForAction && !m_gameOver);
+        // Исправление: показываем карты только для своего игрока (индекс 0) и на шоудауне
+        bool showCards = (m_stage == Stage::Showdown) || (i == 0 && m_waitingForAction && !m_gameOver);
         if (m_players[i]->isBot() && m_stage != Stage::Showdown) showCards = false;
         if (isFolded) showCards = false;
         int cardX = x;
